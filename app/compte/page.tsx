@@ -1,0 +1,137 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowLeft, LogOut, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+
+type AuthUser = {
+  id: string;
+  email?: string;
+};
+
+export default function AccountPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [configured, setConfigured] = useState(false);
+  const [message, setMessage] = useState("Vérification du compte...");
+  const [isLoading, setIsLoading] = useState(false);
+
+  async function refreshSession() {
+    const response = await fetch("/api/auth/session");
+    const data = await response.json();
+    setConfigured(Boolean(data.configured));
+    setUser(data.user ?? null);
+    setMessage(data.configured ? "Tu peux créer un compte ou te connecter." : "Supabase n'est pas encore configuré. La page est prête, il faudra ajouter les clés sur Vercel.");
+  }
+
+  useEffect(() => {
+    refreshSession();
+  }, []);
+
+  async function submit(mode: "signup" | "login") {
+    setIsLoading(true);
+    setMessage(mode === "signup" ? "Création du compte..." : "Connexion...");
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, mode })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.error ?? "Action impossible pour le moment.");
+        return;
+      }
+
+      setUser(data.user ?? null);
+      setMessage(mode === "signup" ? "Compte créé. Si Supabase demande une confirmation email, vérifie ta boîte mail." : "Connexion réussie.");
+      await refreshSession();
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    setMessage("Déconnexion réussie.");
+  }
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
+      <header className="mb-5 flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-mist/50">C&apos;moiLeCoach</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-night">Compte</h1>
+        </div>
+        <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full border border-night/10 bg-white/70">
+          <ArrowLeft className="h-5 w-5 text-moss" />
+        </Link>
+      </header>
+
+      <section className="rounded-[28px] border border-night/10 bg-white/80 p-5 shadow-soft">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="mb-1 text-sm text-moss">Accès personnel</p>
+            <h2 className="text-lg font-medium text-night">{user ? "Tu es connecté" : "Créer ou ouvrir ton compte"}</h2>
+          </div>
+          <UserRound className="h-5 w-5 text-ember" />
+        </div>
+
+        <p className="mb-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/80">{message}</p>
+
+        {user ? (
+          <div className="space-y-4">
+            <p className="rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-mist">
+              Connecté avec : <span className="font-medium text-night">{user.email ?? user.id}</span>
+            </p>
+            <button onClick={logout} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ember px-4 py-3 font-semibold text-white">
+              <LogOut className="h-5 w-5" />
+              Se déconnecter
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm text-mist/70">Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="ton@email.fr"
+                className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none placeholder:text-mist/35"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm text-mist/70">Mot de passe</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="6 caractères minimum"
+                className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none placeholder:text-mist/35"
+              />
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button disabled={isLoading || !configured} onClick={() => submit("login")} className="rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
+                Connexion
+              </button>
+              <button disabled={isLoading || !configured} onClick={() => submit("signup")} className="rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night disabled:opacity-50">
+                Créer
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="mt-5 text-xs leading-5 text-mist/60">
+          Les comptes sont prévus pour synchroniser plus tard le profil, l’historique et les connexions sportives entre ordinateur et téléphone.
+        </p>
+      </section>
+    </main>
+  );
+}
