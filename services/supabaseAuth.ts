@@ -17,12 +17,18 @@ type SupabaseAuthResponse = {
 };
 
 function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL;
+  const rawUrl = process.env.SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY;
 
-  if (!url || !anonKey) {
+  if (!rawUrl || !anonKey) {
     throw new Error("Supabase n'est pas encore configuré.");
   }
+
+  const url = rawUrl
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, "")
+    .replace(/\/auth\/v1\/?$/i, "")
+    .replace(/\/+$/g, "");
 
   return { url, anonKey };
 }
