@@ -139,6 +139,8 @@ export default function Home() {
   ]);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [hasLoadedLocalData, setHasLoadedLocalData] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState("Synchronisation locale active.");
 
   useEffect(() => {
     const savedProfile = readStorage("auto-coach-profile", initialProfile);
@@ -157,7 +159,36 @@ export default function Home() {
     });
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     if (savedProgram) setProgram(JSON.parse(savedProgram));
+    setHasLoadedLocalData(true);
   }, []);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData) return;
+
+    fetch("/api/user-data")
+      .then((response) => response.json())
+      .then((result) => {
+        if (!result.ok || !result.data) {
+          setCloudStatus(result.error ? "Connecté, synchronisation cloud à finaliser." : "Compte prêt, données encore locales.");
+          return;
+        }
+
+        if (result.data.profile) setProfile(normalizeProfile({ ...initialProfile, ...result.data.profile }));
+        if (result.data.readiness) setReadiness({ ...initialReadiness, ...result.data.readiness });
+        if (result.data.garminData) setGarminData(normalizeGarmin({ ...initialGarminMock, ...result.data.garminData }));
+        if (result.data.planner) {
+          setForm({
+            ...initialForm,
+            ...result.data.planner,
+            plannedDays: mergePlannedDays(result.data.planner.plannedDays)
+          });
+        }
+        if (Array.isArray(result.data.currentProgram)) setProgram(result.data.currentProgram);
+        if (Array.isArray(result.data.history)) setHistory(result.data.history);
+        setCloudStatus("Données synchronisées avec ton compte.");
+      })
+      .catch(() => setCloudStatus("Mode local actif. Connecte-toi pour synchroniser."));
+  }, [hasLoadedLocalData]);
 
   useEffect(() => {
     window.localStorage.setItem("auto-coach-garmin-test", JSON.stringify(garminData));
@@ -183,6 +214,32 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
   }, [userMemory]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData) return;
+
+    const timeout = window.setTimeout(() => {
+      fetch("/api/user-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          readiness,
+          garminData,
+          planner: form,
+          currentProgram: program,
+          history,
+          memory: userMemory
+        })
+      })
+        .then((response) => {
+          if (response.ok) setCloudStatus("Données sauvegardées sur ton compte.");
+        })
+        .catch(() => undefined);
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoadedLocalData, profile, readiness, garminData, form, program, history, userMemory]);
 
   function updateReadiness(key: keyof Readiness, value: string | number) {
     setReadiness((current) => ({ ...current, [key]: value }));
@@ -403,6 +460,8 @@ export default function Home() {
       </div>
 
       <AccountStatus />
+
+      <p className="mb-4 rounded-2xl bg-white/70 px-4 py-3 text-xs leading-5 text-mist/70 shadow-soft">{cloudStatus}</p>
 
       <section className="mb-4 rounded-[28px] border border-moss/30 bg-gradient-to-br from-white to-ink-850 p-5 shadow-soft backdrop-blur">
         <p className="mb-2 text-sm text-moss">Synthèse de forme</p>

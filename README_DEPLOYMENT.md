@@ -136,7 +136,14 @@ Solution préparée : Supabase Auth.
 8. Redéployer
 9. Ouvrir `/compte` dans l'application
 
-Important : le stockage local actuel reste actif. Les comptes sont prêts pour synchroniser ensuite profil, historique et connexions entre appareils.
+Pour activer la synchronisation profil, historique et programmes :
+
+1. Dans Supabase, ouvrir `SQL Editor`
+2. Créer une nouvelle requête
+3. Copier le contenu du fichier `supabase/schema.sql`
+4. Cliquer sur `Run`
+
+Important : le stockage local reste actif comme sécurité. Quand le compte est connecté et que la table Supabase existe, l'application synchronise aussi les données sur le compte.
 
 ## 8. Tester sur téléphone
 
