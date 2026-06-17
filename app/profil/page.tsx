@@ -47,7 +47,13 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
   const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
   const [hasCheckedCloudProfile, setHasCheckedCloudProfile] = useState(false);
+  const [hasEditedProfile, setHasEditedProfile] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Sauvegarde locale active.");
+
+  function updateProfile(field: keyof UserProfile, value: string) {
+    setHasEditedProfile(true);
+    setProfile((current) => ({ ...current, [field]: value }));
+  }
 
   useEffect(() => {
     const saved = window.localStorage.getItem("auto-coach-profile");
@@ -64,7 +70,10 @@ export default function ProfilePage() {
       .then((response) => response.json())
       .then((result) => {
         if (result.ok && result.data?.profile && hasProfileValue(result.data.profile)) {
-          setProfile((current) => normalizeProfile(mergeProfileWithoutEmpty(current, result.data.profile)));
+          const cloudProfile = normalizeProfile(mergeProfileWithoutEmpty(initialProfile, result.data.profile));
+          setProfile(cloudProfile);
+          window.localStorage.setItem("auto-coach-profile", JSON.stringify(cloudProfile));
+          setHasEditedProfile(false);
           setSyncStatus("Profil synchronisé avec ton compte.");
         } else {
           setSyncStatus("Profil prêt à être sauvegardé sur ton compte.");
@@ -79,7 +88,7 @@ export default function ProfilePage() {
   }, [profile]);
 
   useEffect(() => {
-    if (!hasLoadedProfile || !hasCheckedCloudProfile) return;
+    if (!hasLoadedProfile || !hasCheckedCloudProfile || !hasEditedProfile) return;
 
     const timeout = window.setTimeout(() => {
       fetch("/api/user-data", {
@@ -88,13 +97,13 @@ export default function ProfilePage() {
         body: JSON.stringify({ profile })
       })
         .then((response) => {
-          if (response.ok) setSyncStatus("Profil sauvegardé sur ton compte.");
+          if (response.ok) { setHasEditedProfile(false); setSyncStatus("Profil sauvegarde sur ton compte."); }
         })
         .catch(() => undefined);
     }, 800);
 
     return () => window.clearTimeout(timeout);
-  }, [hasLoadedProfile, hasCheckedCloudProfile, profile]);
+  }, [hasLoadedProfile, hasCheckedCloudProfile, hasEditedProfile, profile]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
@@ -124,7 +133,7 @@ export default function ProfilePage() {
             <span className="mb-2 block text-sm text-mist/70">Prénom</span>
             <input
               value={profile.firstName}
-              onChange={(event) => setProfile((current) => ({ ...current, firstName: event.target.value }))}
+              onChange={(event) => updateProfile("firstName", event.target.value)}
               placeholder="Ex: Alex"
               className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none placeholder:text-mist/35"
             />
@@ -134,7 +143,7 @@ export default function ProfilePage() {
             <span className="mb-2 block text-sm text-mist/70">Objectif sportif principal</span>
             <textarea
               value={profile.goal}
-              onChange={(event) => setProfile((current) => ({ ...current, goal: event.target.value }))}
+              onChange={(event) => updateProfile("goal", event.target.value)}
               placeholder="Ex: préparer un trail, reprendre doucement, courir 10 km, perdre du poids..."
               className="min-h-24 w-full resize-none rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-night outline-none placeholder:text-mist/35"
             />
@@ -144,7 +153,7 @@ export default function ProfilePage() {
             <span className="mb-2 block text-sm text-mist/70">Niveau</span>
             <select
               value={profile.level}
-              onChange={(event) => setProfile((current) => ({ ...current, level: event.target.value }))}
+              onChange={(event) => updateProfile("level", event.target.value)}
               className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none"
             >
               {levelOptions.map((level) => (
@@ -157,7 +166,7 @@ export default function ProfilePage() {
             <span className="mb-2 block text-sm text-mist/70">Matériel disponible</span>
             <textarea
               value={profile.equipment}
-              onChange={(event) => setProfile((current) => ({ ...current, equipment: event.target.value }))}
+              onChange={(event) => updateProfile("equipment", event.target.value)}
               placeholder="Ex: aucun matériel, tapis, haltères, élastiques, salle, vélo, piscine..."
               className="min-h-24 w-full resize-none rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-night outline-none placeholder:text-mist/35"
             />
@@ -167,7 +176,7 @@ export default function ProfilePage() {
             <span className="mb-2 block text-sm text-mist/70">Contrainte globale à respecter pour tous les programmes</span>
             <textarea
               value={profile.recurringConstraints}
-              onChange={(event) => setProfile((current) => ({ ...current, recurringConstraints: event.target.value }))}
+              onChange={(event) => updateProfile("recurringConstraints", event.target.value)}
               placeholder="Ex: genou fragile, éviter les impacts, pas de bruit le soir, toujours garder un jour de repos après une sortie longue..."
               className="min-h-28 w-full resize-none rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-night outline-none placeholder:text-mist/35"
             />
