@@ -228,6 +228,11 @@ export default function Home() {
   }, [garminData]);
 
   useEffect(() => {
+    if (!hasLoadedLocalData) return;
+    window.localStorage.setItem("auto-coach-profile", JSON.stringify(profile));
+  }, [hasLoadedLocalData, profile]);
+
+  useEffect(() => {
     window.localStorage.setItem("auto-coach-planner", JSON.stringify(form));
   }, [form]);
 
@@ -248,31 +253,21 @@ export default function Home() {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
   }, [userMemory]);
 
-  useEffect(() => {
-    if (!hasLoadedLocalData || !hasCheckedCloudData) return;
+  async function saveCloudPatch(data: Record<string, unknown>, successMessage = "Données sauvegardées sur ton compte.") {
+    if (!hasCheckedCloudData) return;
 
-    const timeout = window.setTimeout(() => {
-      fetch("/api/user-data", {
+    try {
+      const response = await fetch("/api/user-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profile,
-          readiness,
-          garminData,
-          planner: form,
-          currentProgram: program,
-          history,
-          memory: userMemory
-        })
-      })
-        .then((response) => {
-          if (response.ok) setCloudStatus("Données sauvegardées sur ton compte.");
-        })
-        .catch(() => undefined);
-    }, 900);
+        body: JSON.stringify(data)
+      });
 
-    return () => window.clearTimeout(timeout);
-  }, [hasLoadedLocalData, hasCheckedCloudData, profile, readiness, garminData, form, program, history, userMemory]);
+      if (response.ok) setCloudStatus(successMessage);
+    } catch {
+      setCloudStatus("Sauvegarde locale active. La synchronisation reprendra dès que le compte répond.");
+    }
+  }
 
   function updateReadiness(key: keyof Readiness, value: string | number) {
     setReadiness((current) => ({ ...current, [key]: value }));
@@ -308,6 +303,13 @@ export default function Home() {
       setProgram(nextProgram);
       setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, nextProgram));
       setSummary(result.summary ?? localSummary);
+      await saveCloudPatch({
+        readiness,
+        garminData,
+        planner: coachForm,
+        currentProgram: nextProgram,
+        memory: userMemory
+      }, "Programme sauvegardé sur ton compte.");
       setCoachReply(
         result.source === "openai"
           ? "Programme généré avec l’IA connectée. J’ai gardé un ton prudent et humain."
@@ -317,6 +319,13 @@ export default function Home() {
       setProgram(fallbackProgram);
       setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, fallbackProgram));
       setSummary(localSummary);
+      await saveCloudPatch({
+        readiness,
+        garminData,
+        planner: coachForm,
+        currentProgram: fallbackProgram,
+        memory: userMemory
+      }, "Programme sauvegardé sur ton compte.");
       setCoachReply("Le mode simulation a pris le relais. Le programme reste adapté aux données saisies.");
     } finally {
       setIsGenerating(false);
@@ -324,32 +333,39 @@ export default function Home() {
   }
 
   function saveSession(session: ProgramSession) {
-    setHistory((current) => [
-      {
-        id: crypto.randomUUID(),
-        title: `${session.dateLabel} · ${session.type}`,
-        detail: `${session.duration}, intensité ${session.intensity}`,
-        date: new Intl.DateTimeFormat("fr-FR", {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit"
-        }).format(new Date()),
-        timestamp: Date.now(),
-        session
-      },
-      ...current
-    ].slice(0, 10));
+    const entry = {
+      id: crypto.randomUUID(),
+      title: `${session.dateLabel} · ${session.type}`,
+      detail: `${session.duration}, intensité ${session.intensity}`,
+      date: new Intl.DateTimeFormat("fr-FR", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date()),
+      timestamp: Date.now(),
+      session
+    };
+
+    setHistory((current) => {
+      const nextHistory = [entry, ...current].slice(0, 10);
+      void saveCloudPatch({ history: nextHistory, memory: buildUserMemory(nextHistory, profile) }, "Séance sauvegardée sur ton compte.");
+      return nextHistory;
+    });
     setCoachReply("Séance mémorisée. Elle servira de contexte pour les prochaines propositions.");
   }
 
   function deleteHistoryEntry(entryId: string) {
-    setHistory((current) => current.filter((entry) => entry.id !== entryId));
+    setHistory((current) => {
+      const nextHistory = current.filter((entry) => entry.id !== entryId);
+      void saveCloudPatch({ history: nextHistory, memory: buildUserMemory(nextHistory, profile) }, "Historique mis à jour sur ton compte.");
+      return nextHistory;
+    });
   }
 
   function generateAlternativeSession(sessionId: string) {
-    setProgram((current) =>
-      current.map((session) => {
+    setProgram((current) => {
+      const nextProgram = current.map((session) => {
         if (session.id !== sessionId) return session;
 
         const isRun = session.type.toLowerCase().includes("footing") || session.type.toLowerCase().includes("trail");
@@ -376,8 +392,10 @@ export default function Home() {
           id: `${session.id}-alternative-${Date.now()}`,
           ...alternative
         };
-      })
-    );
+      });
+      void saveCloudPatch({ currentProgram: nextProgram }, "Nouvelle séance sauvegardée sur ton compte.");
+      return nextProgram;
+    });
   }
 
   function isSportRelated(message: string) {
