@@ -36,6 +36,7 @@ import {
   type GarminMockData
 } from "@/lib/garminMock";
 import { buildUserMemory } from "@/lib/userMemory";
+import { AccountStatus } from "@/components/AccountStatus";
 
 type ChatMessage = {
   role: "user" | "coach";
@@ -400,6 +401,8 @@ export default function Home() {
           Connexions
         </Link>
       </div>
+
+      <AccountStatus />
 
       <section className="mb-4 rounded-[28px] border border-moss/30 bg-gradient-to-br from-white to-ink-850 p-5 shadow-soft backdrop-blur">
         <p className="mb-2 text-sm text-moss">Synthèse de forme</p>

@@ -15,6 +15,7 @@ import {
   trainingLoadOptions,
   type GarminMockData
 } from "@/lib/garminMock";
+import { AccountStatus } from "@/components/AccountStatus";
 
 function option(value: string) {
   return (
@@ -73,6 +74,8 @@ export default function GarminPage() {
           <ArrowLeft className="h-5 w-5 text-moss" />
         </Link>
       </header>
+
+      <AccountStatus />
 
       <section className="mb-4 rounded-[28px] border border-ember/20 bg-ember/10 p-5 shadow-soft">
         <p className="mb-1 text-sm font-medium text-ember">Connexion officielle Garmin</p>

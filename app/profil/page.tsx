@@ -7,6 +7,7 @@ import {
   levelOptions,
   type UserProfile
 } from "@/lib/coachEngine";
+import { AccountStatus } from "@/components/AccountStatus";
 
 const initialProfile: UserProfile = {
   firstName: "",
@@ -52,6 +53,8 @@ export default function ProfilePage() {
           <ArrowLeft className="h-5 w-5 text-moss" />
         </Link>
       </header>
+
+      <AccountStatus />
 
       <section className="rounded-[28px] border border-night/10 bg-white/80 p-5 shadow-soft">
         <div className="mb-5 flex items-center justify-between">
@@ -117,7 +120,7 @@ export default function ProfilePage() {
           </label>
 
           <p className="rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/72">
-            Sauvegarde automatique sur cet appareil. Reviens à l’accueil pour générer un programme adapté.
+            Sauvegarde automatique sur cet appareil. La synchronisation avec ton compte sera ajoutée dans la prochaine étape.
           </p>
         </div>
       </section>
