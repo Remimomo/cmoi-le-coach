@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, LogOut, UserRound } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, LogOut, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type AuthUser = {
@@ -16,6 +16,7 @@ export default function AccountPage() {
   const [configured, setConfigured] = useState(false);
   const [message, setMessage] = useState("Vérification du compte...");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function refreshSession() {
     const response = await fetch("/api/auth/session");
@@ -47,7 +48,7 @@ export default function AccountPage() {
       }
 
       setUser(data.user ?? null);
-      setMessage(mode === "signup" ? "Compte créé. Si Supabase demande une confirmation email, vérifie ta boîte mail." : "Connexion réussie.");
+      setMessage(mode === "signup" ? "Compte créé. Bienvenue dans C'moiLeCoach." : "Connexion réussie.");
       await refreshSession();
     } finally {
       setIsLoading(false);
@@ -108,21 +109,31 @@ export default function AccountPage() {
 
             <label className="block">
               <span className="mb-2 block text-sm text-mist/70">Mot de passe</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="6 caractères minimum"
-                className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none placeholder:text-mist/35"
-              />
+              <div className="flex items-center rounded-2xl border border-night/10 bg-white/70 px-4">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="6 caractères minimum"
+                  className="min-w-0 flex-1 bg-transparent py-3 text-night outline-none placeholder:text-mist/35"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center text-mist"
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
             </label>
 
             <div className="grid grid-cols-2 gap-3">
-              <button disabled={isLoading || !configured} onClick={() => submit("login")} className="rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
-                Connexion
+              <button disabled={isLoading || !configured} onClick={() => submit("signup")} className="rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
+                Créer mon compte
               </button>
-              <button disabled={isLoading || !configured} onClick={() => submit("signup")} className="rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night disabled:opacity-50">
-                Créer
+              <button disabled={isLoading || !configured} onClick={() => submit("login")} className="rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night disabled:opacity-50">
+                Déjà inscrit
               </button>
             </div>
           </div>

@@ -11,6 +11,8 @@ type SupabaseAuthResponse = {
   expires_in?: number;
   user?: AuthUser;
   error?: string;
+  error_description?: string;
+  message?: string;
   msg?: string;
 };
 
@@ -31,6 +33,7 @@ async function callSupabaseAuth(path: string, body: Record<string, unknown>) {
     method: "POST",
     headers: {
       apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
@@ -38,7 +41,7 @@ async function callSupabaseAuth(path: string, body: Record<string, unknown>) {
 
   const data = (await response.json()) as SupabaseAuthResponse;
   if (!response.ok) {
-    throw new Error(data.msg || data.error || "Erreur d'authentification.");
+    throw new Error(data.message || data.msg || data.error_description || data.error || "Erreur d'authentification.");
   }
 
   return data;
@@ -59,7 +62,7 @@ export async function getSupabaseUser(accessToken?: string): Promise<AuthUser | 
   const response = await fetch(`${url}/auth/v1/user`, {
     headers: {
       apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`
+      Authorization: `Bearer ${accessToken}`,
     }
   });
 
