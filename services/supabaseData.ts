@@ -23,31 +23,6 @@ type UserAppDataRow = {
   updated_at: string;
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isEmptyValue(value: unknown) {
-  if (value === undefined || value === null) return true;
-  if (typeof value === "string") return value.trim().length === 0;
-  return false;
-}
-
-function mergeObjectWithoutEmpty(existing: unknown, incoming: unknown) {
-  if (!isPlainObject(existing) && !isPlainObject(incoming)) return {};
-
-  const merged: Record<string, unknown> = isPlainObject(existing) ? { ...existing } : {};
-
-  if (!isPlainObject(incoming)) return merged;
-
-  Object.entries(incoming).forEach(([key, value]) => {
-    if (isEmptyValue(value)) return;
-    merged[key] = value;
-  });
-
-  return merged;
-}
-
 function pickField(incoming: unknown, existing: unknown, fallback: unknown) {
   return incoming === undefined ? existing ?? fallback : incoming;
 }
@@ -140,13 +115,13 @@ export async function saveUserAppData(data: UserAppData) {
     },
     body: JSON.stringify({
       user_id: user.id,
-      profile: mergeObjectWithoutEmpty(existing?.profile, data.profile),
-      readiness: mergeObjectWithoutEmpty(existing?.readiness, data.readiness),
-      garmin_data: mergeObjectWithoutEmpty(existing?.garmin_data, data.garminData),
-      planner: mergeObjectWithoutEmpty(existing?.planner, data.planner),
+      profile: pickField(data.profile, existing?.profile, {}),
+      readiness: pickField(data.readiness, existing?.readiness, {}),
+      garmin_data: pickField(data.garminData, existing?.garmin_data, {}),
+      planner: pickField(data.planner, existing?.planner, {}),
       current_program: pickField(data.currentProgram, existing?.current_program, []),
       history: pickField(data.history, existing?.history, []),
-      memory: mergeObjectWithoutEmpty(existing?.memory, data.memory)
+      memory: pickField(data.memory, existing?.memory, {})
     })
   });
 

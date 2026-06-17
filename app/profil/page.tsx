@@ -97,7 +97,10 @@ export default function ProfilePage() {
         body: JSON.stringify({ profile })
       })
         .then((response) => {
-          if (response.ok) { setHasEditedProfile(false); setSyncStatus("Profil sauvegarde sur ton compte."); }
+          if (response.ok) {
+            setHasEditedProfile(false);
+            setSyncStatus("Profil sauvegardé sur ton compte.");
+          }
         })
         .catch(() => undefined);
     }, 800);
