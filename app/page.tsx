@@ -121,6 +121,33 @@ function normalizeGarmin(data: GarminMockData): GarminMockData {
   };
 }
 
+function hasMeaningfulValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((item) => {
+      if (Array.isArray(item)) return item.length > 0;
+      if (typeof item === "string") return item.trim().length > 0;
+      if (typeof item === "number") return item !== 0;
+      if (typeof item === "boolean") return item;
+      return Boolean(item);
+    });
+  }
+  if (typeof value === "string") return value.trim().length > 0;
+  return Boolean(value);
+}
+
+function mergeWithoutEmpty<T extends Record<string, unknown>>(current: T, incoming: Partial<T>): T {
+  const merged = { ...current };
+
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (typeof value === "string" && value.trim().length === 0) return;
+    if (value === undefined || value === null) return;
+    merged[key as keyof T] = value as T[keyof T];
+  });
+
+  return merged;
+}
+
 export default function Home() {
   const [readiness, setReadiness] = useState<Readiness>(initialReadiness);
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
@@ -140,6 +167,7 @@ export default function Home() {
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasLoadedLocalData, setHasLoadedLocalData] = useState(false);
+  const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Synchronisation locale active.");
 
   useEffect(() => {
@@ -173,21 +201,26 @@ export default function Home() {
           return;
         }
 
-        if (result.data.profile) setProfile(normalizeProfile({ ...initialProfile, ...result.data.profile }));
-        if (result.data.readiness) setReadiness({ ...initialReadiness, ...result.data.readiness });
-        if (result.data.garminData) setGarminData(normalizeGarmin({ ...initialGarminMock, ...result.data.garminData }));
-        if (result.data.planner) {
+        if (hasMeaningfulValue(result.data.profile)) {
+          setProfile((current) => normalizeProfile(mergeWithoutEmpty(current, result.data.profile)));
+        }
+        if (hasMeaningfulValue(result.data.readiness)) setReadiness((current) => ({ ...current, ...result.data.readiness }));
+        if (hasMeaningfulValue(result.data.garminData)) {
+          setGarminData((current) => normalizeGarmin({ ...current, ...result.data.garminData }));
+        }
+        if (hasMeaningfulValue(result.data.planner)) {
           setForm({
             ...initialForm,
             ...result.data.planner,
             plannedDays: mergePlannedDays(result.data.planner.plannedDays)
           });
         }
-        if (Array.isArray(result.data.currentProgram)) setProgram(result.data.currentProgram);
-        if (Array.isArray(result.data.history)) setHistory(result.data.history);
+        if (Array.isArray(result.data.currentProgram) && result.data.currentProgram.length > 0) setProgram(result.data.currentProgram);
+        if (Array.isArray(result.data.history) && result.data.history.length > 0) setHistory(result.data.history);
         setCloudStatus("Données synchronisées avec ton compte.");
       })
-      .catch(() => setCloudStatus("Mode local actif. Connecte-toi pour synchroniser."));
+      .catch(() => setCloudStatus("Mode local actif. Connecte-toi pour synchroniser."))
+      .finally(() => setHasCheckedCloudData(true));
   }, [hasLoadedLocalData]);
 
   useEffect(() => {
@@ -216,7 +249,7 @@ export default function Home() {
   }, [userMemory]);
 
   useEffect(() => {
-    if (!hasLoadedLocalData) return;
+    if (!hasLoadedLocalData || !hasCheckedCloudData) return;
 
     const timeout = window.setTimeout(() => {
       fetch("/api/user-data", {
@@ -239,7 +272,7 @@ export default function Home() {
     }, 900);
 
     return () => window.clearTimeout(timeout);
-  }, [hasLoadedLocalData, profile, readiness, garminData, form, program, history, userMemory]);
+  }, [hasLoadedLocalData, hasCheckedCloudData, profile, readiness, garminData, form, program, history, userMemory]);
 
   function updateReadiness(key: keyof Readiness, value: string | number) {
     setReadiness((current) => ({ ...current, [key]: value }));

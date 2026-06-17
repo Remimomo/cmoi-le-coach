@@ -91,6 +91,16 @@ export async function readUserAppData() {
 export async function saveUserAppData(data: UserAppData) {
   const { user, accessToken } = await getConnectedUser();
   const { url, anonKey } = getSupabaseConfig();
+  const existingResponse = await fetch(`${url}/rest/v1/user_app_data?user_id=eq.${user.id}&select=*`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`
+    },
+    cache: "no-store"
+  });
+  const existingRows = existingResponse.ok ? ((await existingResponse.json()) as UserAppDataRow[]) : [];
+  const existing = existingRows[0];
+
   const response = await fetch(`${url}/rest/v1/user_app_data`, {
     method: "POST",
     headers: {
@@ -101,13 +111,13 @@ export async function saveUserAppData(data: UserAppData) {
     },
     body: JSON.stringify({
       user_id: user.id,
-      profile: data.profile ?? {},
-      readiness: data.readiness ?? {},
-      garmin_data: data.garminData ?? {},
-      planner: data.planner ?? {},
-      current_program: data.currentProgram ?? [],
-      history: data.history ?? [],
-      memory: data.memory ?? {}
+      profile: data.profile ?? existing?.profile ?? {},
+      readiness: data.readiness ?? existing?.readiness ?? {},
+      garmin_data: data.garminData ?? existing?.garmin_data ?? {},
+      planner: data.planner ?? existing?.planner ?? {},
+      current_program: data.currentProgram ?? existing?.current_program ?? [],
+      history: data.history ?? existing?.history ?? [],
+      memory: data.memory ?? existing?.memory ?? {}
     })
   });
 

@@ -28,19 +28,73 @@ function normalizeProfile(profile: UserProfile): UserProfile {
   };
 }
 
+function hasProfileValue(profile: Partial<UserProfile>) {
+  return Object.values(profile).some((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+function mergeProfileWithoutEmpty(current: UserProfile, incoming: Partial<UserProfile>): UserProfile {
+  const merged = { ...current };
+
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (typeof value !== "string" || value.trim().length === 0) return;
+    merged[key as keyof UserProfile] = value;
+  });
+
+  return merged;
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
+  const [hasCheckedCloudProfile, setHasCheckedCloudProfile] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("Sauvegarde locale active.");
 
   useEffect(() => {
     const saved = window.localStorage.getItem("auto-coach-profile");
     if (saved) {
       setProfile(normalizeProfile({ ...initialProfile, ...JSON.parse(saved) }));
     }
+    setHasLoadedProfile(true);
   }, []);
+
+  useEffect(() => {
+    if (!hasLoadedProfile) return;
+
+    fetch("/api/user-data")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok && result.data?.profile && hasProfileValue(result.data.profile)) {
+          setProfile((current) => normalizeProfile(mergeProfileWithoutEmpty(current, result.data.profile)));
+          setSyncStatus("Profil synchronisé avec ton compte.");
+        } else {
+          setSyncStatus("Profil prêt à être sauvegardé sur ton compte.");
+        }
+      })
+      .catch(() => setSyncStatus("Mode local actif. Connecte-toi pour synchroniser."))
+      .finally(() => setHasCheckedCloudProfile(true));
+  }, [hasLoadedProfile]);
 
   useEffect(() => {
     window.localStorage.setItem("auto-coach-profile", JSON.stringify(profile));
   }, [profile]);
+
+  useEffect(() => {
+    if (!hasLoadedProfile || !hasCheckedCloudProfile) return;
+
+    const timeout = window.setTimeout(() => {
+      fetch("/api/user-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile })
+      })
+        .then((response) => {
+          if (response.ok) setSyncStatus("Profil sauvegardé sur ton compte.");
+        })
+        .catch(() => undefined);
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoadedProfile, hasCheckedCloudProfile, profile]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
@@ -59,7 +113,7 @@ export default function ProfilePage() {
       <section className="rounded-[28px] border border-night/10 bg-white/80 p-5 shadow-soft">
         <div className="mb-5 flex items-center justify-between">
           <div>
-            <p className="mb-1 text-sm text-moss">Sauvegarde locale</p>
+          <p className="mb-1 text-sm text-moss">Sauvegarde locale</p>
             <h2 className="text-lg font-medium text-night">Tes repères</h2>
           </div>
           <UserRound className="h-5 w-5 text-ember" />
@@ -120,7 +174,7 @@ export default function ProfilePage() {
           </label>
 
           <p className="rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/72">
-            Sauvegarde automatique sur cet appareil. La synchronisation avec ton compte sera ajoutée dans la prochaine étape.
+            {syncStatus}
           </p>
         </div>
       </section>
