@@ -25,22 +25,80 @@ function option(value: string) {
   );
 }
 
+function hasMeaningfulValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((item) => {
+      if (typeof item === "string") return item.trim().length > 0;
+      if (typeof item === "number") return item !== 0;
+      return Boolean(item);
+    });
+  }
+  return Boolean(value);
+}
+
 export default function GarminPage() {
   const [garminData, setGarminData] = useState<GarminMockData>(initialGarminMock);
   const [garminStatus, setGarminStatus] = useState("Vérification en cours...");
   const [stravaStatus, setStravaStatus] = useState("Vérification Strava en cours...");
   const [stravaAuthorizeUrl, setStravaAuthorizeUrl] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState("Sauvegarde locale active.");
+  const [hasLoadedGarminData, setHasLoadedGarminData] = useState(false);
+  const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
+  const [hasEditedGarminData, setHasEditedGarminData] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("auto-coach-garmin-test");
     if (saved) {
       setGarminData({ ...initialGarminMock, ...JSON.parse(saved) });
     }
+    setHasLoadedGarminData(true);
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem("auto-coach-garmin-test", JSON.stringify(garminData));
   }, [garminData]);
+
+  useEffect(() => {
+    if (!hasLoadedGarminData) return;
+
+    fetch("/api/user-data")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok && result.data?.garminData && hasMeaningfulValue(result.data.garminData)) {
+          const cloudGarminData = { ...initialGarminMock, ...result.data.garminData };
+          setGarminData(cloudGarminData);
+          window.localStorage.setItem("auto-coach-garmin-test", JSON.stringify(cloudGarminData));
+          setHasEditedGarminData(false);
+          setSyncStatus("Données Garmin synchronisées avec ton compte.");
+        } else {
+          setSyncStatus("Données Garmin prêtes à être sauvegardées sur ton compte.");
+        }
+      })
+      .catch(() => setSyncStatus("Mode local actif. Connecte-toi pour synchroniser."))
+      .finally(() => setHasCheckedCloudData(true));
+  }, [hasLoadedGarminData]);
+
+  useEffect(() => {
+    if (!hasLoadedGarminData || !hasCheckedCloudData || !hasEditedGarminData) return;
+
+    const timeout = window.setTimeout(() => {
+      fetch("/api/user-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ garminData })
+      })
+        .then((response) => {
+          if (response.ok) {
+            setHasEditedGarminData(false);
+            setSyncStatus("Données Garmin sauvegardées sur ton compte.");
+          }
+        })
+        .catch(() => setSyncStatus("Sauvegarde locale active. La synchronisation reprendra plus tard."));
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoadedGarminData, hasCheckedCloudData, hasEditedGarminData, garminData]);
 
   useEffect(() => {
     fetch("/api/garmin/status")
@@ -60,6 +118,7 @@ export default function GarminPage() {
   }, []);
 
   function updateGarminData(key: keyof GarminMockData, value: string) {
+    setHasEditedGarminData(true);
     setGarminData((current) => ({ ...current, [key]: value }));
   }
 
@@ -76,6 +135,8 @@ export default function GarminPage() {
       </header>
 
       <AccountStatus />
+
+      <p className="mb-4 rounded-2xl bg-white/70 px-4 py-3 text-xs leading-5 text-mist/70 shadow-soft">{syncStatus}</p>
 
       <section className="mb-4 rounded-[28px] border border-ember/20 bg-ember/10 p-5 shadow-soft">
         <p className="mb-1 text-sm font-medium text-ember">Connexion officielle Garmin</p>

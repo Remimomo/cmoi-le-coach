@@ -17,7 +17,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   buildShapeSummary,
   buildGlobalAdvice,
@@ -168,16 +168,20 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasLoadedLocalData, setHasLoadedLocalData] = useState(false);
   const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
+  const [hasEditedReadiness, setHasEditedReadiness] = useState(false);
+  const [hasEditedPlanner, setHasEditedPlanner] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Synchronisation locale active.");
 
   useEffect(() => {
     const savedProfile = readStorage("auto-coach-profile", initialProfile);
+    const savedReadiness = readStorage("auto-coach-readiness", initialReadiness);
     const savedGarmin = readStorage("auto-coach-garmin-test", initialGarminMock);
     const savedForm = readStorage("auto-coach-planner", initialForm);
     const savedHistory = window.localStorage.getItem("auto-coach-history");
     const savedProgram = window.localStorage.getItem("auto-coach-current-program");
 
     setProfile(normalizeProfile(savedProfile));
+    setReadiness(savedReadiness);
     setGarminData(normalizeGarmin(savedGarmin));
     setForm({
       ...initialForm,
@@ -228,6 +232,10 @@ export default function Home() {
   }, [garminData]);
 
   useEffect(() => {
+    window.localStorage.setItem("auto-coach-readiness", JSON.stringify(readiness));
+  }, [readiness]);
+
+  useEffect(() => {
     if (!hasLoadedLocalData) return;
     window.localStorage.setItem("auto-coach-profile", JSON.stringify(profile));
   }, [hasLoadedLocalData, profile]);
@@ -253,8 +261,8 @@ export default function Home() {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
   }, [userMemory]);
 
-  async function saveCloudPatch(data: Record<string, unknown>, successMessage = "Données sauvegardées sur ton compte.") {
-    if (!hasCheckedCloudData) return;
+  const saveCloudPatch = useCallback(async (data: Record<string, unknown>, successMessage = "Données sauvegardées sur ton compte.") => {
+    if (!hasCheckedCloudData) return false;
 
     try {
       const response = await fetch("/api/user-data", {
@@ -263,17 +271,48 @@ export default function Home() {
         body: JSON.stringify(data)
       });
 
-      if (response.ok) setCloudStatus(successMessage);
+      if (response.ok) {
+        setCloudStatus(successMessage);
+        return true;
+      }
     } catch {
       setCloudStatus("Sauvegarde locale active. La synchronisation reprendra dès que le compte répond.");
     }
-  }
+
+    return false;
+  }, [hasCheckedCloudData]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData || !hasCheckedCloudData || !hasEditedReadiness) return;
+
+    const timeout = window.setTimeout(() => {
+      void saveCloudPatch({ readiness }, "État du jour sauvegardé sur ton compte.").then((saved) => {
+        if (saved) setHasEditedReadiness(false);
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoadedLocalData, hasCheckedCloudData, hasEditedReadiness, readiness, saveCloudPatch]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData || !hasCheckedCloudData || !hasEditedPlanner) return;
+
+    const timeout = window.setTimeout(() => {
+      void saveCloudPatch({ planner: form }, "Planification sauvegardée sur ton compte.").then((saved) => {
+        if (saved) setHasEditedPlanner(false);
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [hasLoadedLocalData, hasCheckedCloudData, hasEditedPlanner, form, saveCloudPatch]);
 
   function updateReadiness(key: keyof Readiness, value: string | number) {
+    setHasEditedReadiness(true);
     setReadiness((current) => ({ ...current, [key]: value }));
   }
 
   function togglePlannedDay(id: string) {
+    setHasEditedPlanner(true);
     setForm((current) => ({
       ...current,
       plannedDays: current.plannedDays.map((day) => (day.id === id ? { ...day, selected: !day.selected } : day))
@@ -281,10 +320,16 @@ export default function Home() {
   }
 
   function updatePlannedDayNote(id: string, note: string) {
+    setHasEditedPlanner(true);
     setForm((current) => ({
       ...current,
       plannedDays: current.plannedDays.map((day) => (day.id === id ? { ...day, note } : day))
     }));
+  }
+
+  function updateGlobalNotes(globalNotes: string) {
+    setHasEditedPlanner(true);
+    setForm((current) => ({ ...current, globalNotes }));
   }
 
   async function buildProgram() {
@@ -514,25 +559,6 @@ export default function Home() {
 
       <p className="mb-4 rounded-2xl bg-white/70 px-4 py-3 text-xs leading-5 text-mist/70 shadow-soft">{cloudStatus}</p>
 
-      <section className="mb-4 rounded-[28px] border border-moss/30 bg-gradient-to-br from-white to-ink-850 p-5 shadow-soft backdrop-blur">
-        <p className="mb-2 text-sm text-moss">Synthèse de forme</p>
-        <h2 className="text-xl font-medium text-night">{activeSummary.status}</h2>
-        <p className="mt-3 text-sm leading-6 text-mist/75">{activeSummary.explanation}</p>
-        <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/75">{coachReply}</p>
-      </section>
-
-      <section className="mb-4 rounded-[28px] border border-night/10 bg-white/75 p-5 shadow-soft">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-ember/15 text-ember">
-            <Coffee className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="mb-1 text-sm font-medium text-night">Ce que ton coach retient</p>
-            <p className="text-sm leading-6 text-mist/80">{userMemory.insight}</p>
-          </div>
-        </div>
-      </section>
-
       <section className="mb-4 rounded-[28px] border border-night/10 bg-white/80 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-medium text-night">Comment tu te sens aujourd’hui ?</h2>
@@ -564,6 +590,25 @@ export default function Home() {
               </div>
             </label>
           ))}
+        </div>
+      </section>
+
+      <section className="mb-4 rounded-[28px] border border-moss/30 bg-gradient-to-br from-white to-ink-850 p-5 shadow-soft backdrop-blur">
+        <p className="mb-2 text-sm text-moss">Synthèse de forme</p>
+        <h2 className="text-xl font-medium text-night">{activeSummary.status}</h2>
+        <p className="mt-3 text-sm leading-6 text-mist/75">{activeSummary.explanation}</p>
+        <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/75">{coachReply}</p>
+      </section>
+
+      <section className="mb-4 rounded-[28px] border border-night/10 bg-white/75 p-5 shadow-soft">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-ember/15 text-ember">
+            <Coffee className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-medium text-night">Ce que ton coach retient</p>
+            <p className="text-sm leading-6 text-mist/80">{userMemory.insight}</p>
+          </div>
         </div>
       </section>
 
@@ -626,7 +671,7 @@ export default function Home() {
             <span className="mb-2 block text-sm text-mist/70">Autres précisions pour ton coach</span>
             <textarea
               value={form.globalNotes}
-              onChange={(event) => setForm((current) => ({ ...current, globalNotes: event.target.value }))}
+              onChange={(event) => updateGlobalNotes(event.target.value)}
               placeholder="Ex: semaine chargée, je veux éviter le bruit le soir, déplacement vendredi..."
               className="min-h-28 w-full resize-none rounded-2xl border border-moss/20 bg-moss/10 px-4 py-3 text-sm text-night outline-none placeholder:text-mist/35"
             />
