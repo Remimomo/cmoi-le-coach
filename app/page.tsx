@@ -545,12 +545,15 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="mb-4 grid grid-cols-3 gap-3">
         <Link href="/profil" className="rounded-2xl border border-night/10 bg-white/65 px-4 py-3 text-center text-sm text-mist">
           Profil
         </Link>
         <Link href="/garmin" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
           Connexions
+        </Link>
+        <Link href="/entreprise" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
+          Entreprise
         </Link>
       </div>
 
