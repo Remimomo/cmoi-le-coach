@@ -37,6 +37,7 @@ import {
 } from "@/lib/garminMock";
 import { buildUserMemory } from "@/lib/userMemory";
 import { AccountStatus } from "@/components/AccountStatus";
+import { AuthGate } from "@/components/AuthGate";
 
 type ChatMessage = {
   role: "user" | "coach";
@@ -518,6 +519,7 @@ export default function Home() {
   }
 
   return (
+    <AuthGate>
     <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-28 pt-5">
       <header className="mb-5">
         <div>
@@ -543,10 +545,7 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <Link href="/compte" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
-          Compte
-        </Link>
+      <div className="mb-4 grid grid-cols-2 gap-3">
         <Link href="/profil" className="rounded-2xl border border-night/10 bg-white/65 px-4 py-3 text-center text-sm text-mist">
           Profil
         </Link>
@@ -556,8 +555,6 @@ export default function Home() {
       </div>
 
       <AccountStatus />
-
-      <p className="mb-4 rounded-2xl bg-white/70 px-4 py-3 text-xs leading-5 text-mist/70 shadow-soft">{cloudStatus}</p>
 
       <section className="mb-4 rounded-[28px] border border-night/10 bg-white/80 p-5">
         <div className="mb-4 flex items-center justify-between">
@@ -804,6 +801,7 @@ export default function Home() {
         </div>
       </div>
     </main>
+    </AuthGate>
   );
 }
 

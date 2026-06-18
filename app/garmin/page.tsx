@@ -16,6 +16,7 @@ import {
   type GarminMockData
 } from "@/lib/garminMock";
 import { AccountStatus } from "@/components/AccountStatus";
+import { AuthGate } from "@/components/AuthGate";
 
 function option(value: string) {
   return (
@@ -123,6 +124,7 @@ export default function GarminPage() {
   }
 
   return (
+    <AuthGate>
     <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
       <header className="mb-5 flex items-center justify-between">
         <div>
@@ -244,6 +246,7 @@ export default function GarminPage() {
         </div>
       </section>
     </main>
+    </AuthGate>
   );
 }
 

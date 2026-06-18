@@ -8,6 +8,7 @@ import {
   type UserProfile
 } from "@/lib/coachEngine";
 import { AccountStatus } from "@/components/AccountStatus";
+import { AuthGate } from "@/components/AuthGate";
 
 const initialProfile: UserProfile = {
   firstName: "",
@@ -109,6 +110,7 @@ export default function ProfilePage() {
   }, [hasLoadedProfile, hasCheckedCloudProfile, hasEditedProfile, profile]);
 
   return (
+    <AuthGate>
     <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
       <header className="mb-5 flex items-center justify-between">
         <div>
@@ -191,6 +193,7 @@ export default function ProfilePage() {
         </div>
       </section>
     </main>
+    </AuthGate>
   );
 }
 
