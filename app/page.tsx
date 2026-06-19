@@ -8,6 +8,7 @@ import {
   Dumbbell,
   Flame,
   HeartPulse,
+  UsersRound,
   MessageCircle,
   Moon,
   Sparkles,
@@ -53,6 +54,19 @@ type StravaActivitySummary = {
   distanceKm: number;
   movingMinutes: number;
   startDate: string;
+};
+
+type ChallengeDashboard = {
+  member: null | {
+    companyId: string;
+    companyName: string;
+    role: "employee" | "admin";
+  };
+  personalScore: number;
+  collectiveScore: number;
+  monthlyGoal: number;
+  participationIndex: number;
+  message: string;
 };
 
 function coachMessage(text: string): ChatMessage {
@@ -194,6 +208,7 @@ export default function Home() {
   const [hasEditedReadiness, setHasEditedReadiness] = useState(false);
   const [hasEditedPlanner, setHasEditedPlanner] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Synchronisation locale active.");
+  const [challengeDashboard, setChallengeDashboard] = useState<ChallengeDashboard | null>(null);
 
   useEffect(() => {
     const savedProfile = readStorage("auto-coach-profile", initialProfile);
@@ -254,6 +269,17 @@ export default function Home() {
       })
       .catch(() => setCloudStatus("Mode local actif. Connecte-toi pour synchroniser."))
       .finally(() => setHasCheckedCloudData(true));
+  }, [hasLoadedLocalData]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData) return;
+
+    fetch("/api/enterprise/dashboard")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok && result.dashboard?.member) setChallengeDashboard(result.dashboard);
+      })
+      .catch(() => undefined);
   }, [hasLoadedLocalData]);
 
   useEffect(() => {
@@ -739,6 +765,38 @@ export default function Home() {
           </p>
         </div>
       </section>
+
+      {challengeDashboard?.member && (
+        <section className="mb-4 rounded-[28px] border border-night/10 bg-white/80 p-5 shadow-soft">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-moss">Challenge collectif</p>
+              <h2 className="mt-1 text-lg font-medium text-night">{challengeDashboard.member.companyName}</h2>
+            </div>
+            <UsersRound className="h-5 w-5 text-ember" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-moss/10 p-4">
+              <p className="text-2xl font-semibold text-night">{challengeDashboard.personalScore}</p>
+              <p className="mt-1 text-xs text-mist/65">mes points</p>
+            </div>
+            <div className="rounded-2xl bg-ember/10 p-4">
+              <p className="text-2xl font-semibold text-night">{challengeDashboard.collectiveScore}</p>
+              <p className="mt-1 text-xs text-mist/65">collectif</p>
+            </div>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-night/10">
+            <div
+              className="h-full rounded-full bg-moss"
+              style={{ width: `${Math.min(100, Math.round((challengeDashboard.collectiveScore / Math.max(1, challengeDashboard.monthlyGoal)) * 100))}%` }}
+            />
+          </div>
+          <p className="mt-3 text-sm leading-6 text-mist/80">{challengeDashboard.message}</p>
+          <Link href="/entreprise" className="mt-4 block rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-center text-sm font-semibold text-night">
+            Voir le challenge
+          </Link>
+        </section>
+      )}
 
       <section className="mb-4 overflow-hidden rounded-[30px] border border-moss/25 bg-gradient-to-br from-white to-ink-950 p-5 shadow-soft">
         <div className="flex items-start justify-between gap-4">
