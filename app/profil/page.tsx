@@ -21,10 +21,19 @@ const initialProfile: UserProfile = {
   recurringConstraints: ""
 };
 
+function normalizeLevel(level: string) {
+  const cleanLevel = level.toLowerCase().trim();
+  if (cleanLevel.includes("interm")) return "intermédiaire";
+  if (cleanLevel.includes("confirm")) return "confirmé";
+  if (cleanLevel.includes("butant")) return "débutant";
+  if (cleanLevel.includes("reprise")) return "reprise";
+  return "intermédiaire";
+}
+
 function normalizeProfile(profile: UserProfile): UserProfile {
   return {
     ...profile,
-    level: profile.level.toLowerCase(),
+    level: normalizeLevel(profile.level),
     equipment: profile.equipment
   };
 }
@@ -110,8 +119,9 @@ export default function ProfilePage() {
   }, [hasLoadedProfile]);
 
   useEffect(() => {
+    if (!hasLoadedProfile) return;
     window.localStorage.setItem("auto-coach-profile", JSON.stringify(profile));
-  }, [profile]);
+  }, [hasLoadedProfile, profile]);
 
   useEffect(() => {
     if (!hasLoadedProfile || !hasCheckedCloudProfile || !hasEditedProfile) return;

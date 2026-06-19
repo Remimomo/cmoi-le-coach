@@ -269,6 +269,10 @@ export default function Home() {
     window.localStorage.setItem("auto-coach-current-program", JSON.stringify(program));
   }, [program]);
 
+  useEffect(() => {
+    setProgram((current) => current.filter((session) => form.plannedDays.some((day) => day.selected && session.id.startsWith(day.id))));
+  }, [form.plannedDays]);
+
   const stravaHistory = useMemo<HistoryEntry[]>(() => {
     return stravaActivities.map((activity) => ({
       id: `strava-${activity.id}`,
@@ -283,6 +287,10 @@ export default function Home() {
   const userMemory = useMemo(() => buildUserMemory(coachHistory, profile), [coachHistory, profile]);
   const activeSummary = summary ?? localSummary;
   const selectedDayCount = form.plannedDays.filter((day) => day.selected).length;
+  const visibleProgram = useMemo(
+    () => program.filter((session) => form.plannedDays.some((day) => day.selected && session.id.startsWith(day.id))),
+    [form.plannedDays, program]
+  );
 
   useEffect(() => {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
@@ -711,14 +719,14 @@ export default function Home() {
         </section>
       )}
 
-      {program.length > 0 && (
+      {visibleProgram.length > 0 && (
         <section className="mb-4 rounded-[28px] border border-night/10 bg-white/70 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-medium text-night">Programme proposé</h2>
             <Dumbbell className="h-5 w-5 text-moss" />
           </div>
           <div className="space-y-4">
-            {program.map((session) => (
+            {visibleProgram.map((session) => (
               <article key={session.id} className="rounded-3xl bg-white/80 p-4">
                 <p className="mb-1 text-sm font-semibold text-ember">{session.dateLabel}</p>
                 <h3 className="text-lg font-medium text-night">{session.type}</h3>
