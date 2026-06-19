@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   Dumbbell,
+  Flame,
   HeartPulse,
   MessageCircle,
   Moon,
@@ -13,6 +14,8 @@ import {
   Zap,
   Brain,
   Leaf,
+  ShieldCheck,
+  Trophy,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
@@ -74,6 +77,7 @@ const initialProfile: UserProfile = {
   goal: "forme générale",
   customGoal: "",
   level: "intermédiaire",
+  favoriteSports: "",
   sessionsPerWeek: "",
   equipment: "",
   customEquipment: "",
@@ -157,6 +161,14 @@ function mergeWithoutEmpty<T extends Record<string, unknown>>(current: T, incomi
   return merged;
 }
 
+function relevanceLabel(value: number) {
+  if (value <= 12) return "beaucoup trop légère";
+  if (value <= 37) return "un peu trop légère";
+  if (value <= 62) return "parfaitement adaptée";
+  if (value <= 87) return "un peu trop difficile";
+  return "beaucoup trop difficile";
+}
+
 export default function Home() {
   const [readiness, setReadiness] = useState<Readiness>(initialReadiness);
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
@@ -168,6 +180,7 @@ export default function Home() {
   const [globalAdvice, setGlobalAdvice] = useState<CoachAdvice | null>(null);
   const [expandedSessionIds, setExpandedSessionIds] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showFullHistory, setShowFullHistory] = useState(false);
   const [coachInput, setCoachInput] = useState("");
   const [coachReply, setCoachReply] = useState("Je suis là pour parler sport, forme, récup, motivation et alimentation simple.");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -288,12 +301,28 @@ export default function Home() {
     () => [...coachHistory].sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0)),
     [coachHistory]
   );
+  const visibleHistoryEntries = showFullHistory ? displayedHistory : displayedHistory.slice(0, 3);
   const activeSummary = summary ?? localSummary;
   const selectedDayCount = form.plannedDays.filter((day) => day.selected).length;
   const visibleProgram = useMemo(
     () => program.filter((session) => form.plannedDays.some((day) => day.selected && session.id.startsWith(day.id))),
     [form.plannedDays, program]
   );
+  const tenDayBalance = useMemo(() => {
+    const since = Date.now() - 10 * 24 * 60 * 60 * 1000;
+    const recentEntries = coachHistory.filter((entry) => (entry.timestamp ?? 0) >= since);
+    const minutes = recentEntries.reduce((total, entry) => {
+      const match = entry.detail.match(/(\d+)\s*min/i);
+      return total + (match ? Number(match[1]) : 0);
+    }, 0);
+    const stravaCount = recentEntries.filter((entry) => entry.id.startsWith("strava-")).length;
+
+    return {
+      sessions: recentEntries.length,
+      minutes,
+      stravaCount
+    };
+  }, [coachHistory]);
 
   useEffect(() => {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
@@ -438,7 +467,9 @@ export default function Home() {
         minute: "2-digit"
       }).format(new Date()),
       timestamp: Date.now(),
-      session
+      session,
+      relevanceScore: 50,
+      relevanceHistory: [{ value: 50, timestamp: Date.now() }]
     };
 
     setHistory((current) => {
@@ -453,6 +484,29 @@ export default function Home() {
     setHistory((current) => {
       const nextHistory = current.filter((entry) => entry.id !== entryId);
       void saveCloudPatch({ history: nextHistory, memory: buildUserMemory(nextHistory, profile) }, "Historique mis à jour sur ton compte.");
+      return nextHistory;
+    });
+  }
+
+  function updateSessionRelevance(entryId: string, value: number) {
+    setHistory((current) => {
+      const nextHistory = current.map((entry) => {
+        if (entry.id !== entryId) return entry;
+
+        return {
+          ...entry,
+          relevanceScore: value,
+          relevanceHistory: [
+            { value, timestamp: Date.now() },
+            ...(entry.relevanceHistory ?? [])
+          ].slice(0, 20)
+        };
+      });
+
+      void saveCloudPatch(
+        { history: nextHistory, memory: buildUserMemory(nextHistory, profile) },
+        "Pertinence de la séance sauvegardée sur ton compte."
+      );
       return nextHistory;
     });
   }
@@ -647,6 +701,45 @@ export default function Home() {
         <p className="mt-3 text-sm leading-6 text-mist/75">{activeSummary.explanation}</p>
       </section>
 
+      <section className="mb-4 rounded-[28px] border border-night/10 bg-white/80 p-5 shadow-soft">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-moss">Mini bilan</p>
+            <h2 className="mt-1 text-lg font-medium text-night">Tes 10 derniers jours</h2>
+          </div>
+          <Trophy className="h-5 w-5 text-ember" />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-2xl bg-moss/10 px-3 py-4 text-center">
+            <p className="text-2xl font-semibold text-night">{tenDayBalance.sessions}</p>
+            <p className="mt-1 text-[11px] leading-4 text-mist/65">séance(s)</p>
+          </div>
+          <div className="rounded-2xl bg-ember/10 px-3 py-4 text-center">
+            <p className="text-2xl font-semibold text-night">{tenDayBalance.minutes}</p>
+            <p className="mt-1 text-[11px] leading-4 text-mist/65">minutes</p>
+          </div>
+          <div className="rounded-2xl bg-white/70 px-3 py-4 text-center">
+            <p className="text-2xl font-semibold text-night">{tenDayBalance.stravaCount}</p>
+            <p className="mt-1 text-[11px] leading-4 text-mist/65">Strava</p>
+          </div>
+        </div>
+        <p className="mt-4 flex items-start gap-2 rounded-2xl bg-ink-850 px-4 py-3 text-xs leading-5 text-mist/70">
+          <Flame className="mt-0.5 h-4 w-4 shrink-0 text-ember" />
+          {tenDayBalance.sessions > 0
+            ? "Le coach utilise ce bilan pour doser la prochaine charge."
+            : "Dès qu’une séance apparaît, le coach ajuste mieux la suite."}
+        </p>
+      </section>
+
+      <section className="mb-4 rounded-[28px] border border-moss/20 bg-moss/10 p-4">
+        <div className="flex gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-moss" />
+          <p className="text-xs leading-5 text-mist/75">
+            Les programmes sont proposés par IA à partir de ton profil, tes sensations, tes disponibilités, ton historique et Strava. Chaque personne est unique : si une séance ne colle pas, mets à jour tes infos pour améliorer la précision.
+          </p>
+        </div>
+      </section>
+
       <section className="mb-4 overflow-hidden rounded-[30px] border border-moss/25 bg-gradient-to-br from-white to-ink-950 p-5 shadow-soft">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -773,7 +866,7 @@ export default function Home() {
           <p className="text-sm leading-6 text-mist/60">Les séances mémorisées et Strava apparaîtront ici.</p>
         ) : (
           <div className="space-y-3">
-            {displayedHistory.map((entry) => (
+            {visibleHistoryEntries.map((entry) => (
               <article key={entry.id} className="rounded-2xl bg-white/65 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -789,8 +882,48 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+                {!entry.id.startsWith("strava-") && entry.session && (
+                  <div className="mt-4 rounded-2xl bg-moss/10 px-4 py-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-night">Pertinence de la séance</p>
+                        <p className="mt-1 text-xs leading-5 text-mist/65">Cette séance était-elle adaptée à toi aujourd&apos;hui ?</p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-moss">{entry.relevanceScore ?? 50}</span>
+                    </div>
+                    <input
+                      aria-label="Pertinence de la séance"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={entry.relevanceScore ?? 50}
+                      onChange={(event) => updateSessionRelevance(entry.id, Number(event.target.value))}
+                      className="h-2 w-full accent-moss"
+                    />
+                    <div className="mt-2 grid grid-cols-5 gap-1 text-[9px] leading-3 text-mist/50">
+                      <span>0<br />très légère</span>
+                      <span>25<br />légère</span>
+                      <span className="text-center">50<br />adaptée</span>
+                      <span className="text-right">75<br />difficile</span>
+                      <span className="text-right">100<br />très difficile</span>
+                    </div>
+                    <p className="mt-2 text-xs text-mist/70">
+                      {relevanceLabel(entry.relevanceScore ?? 50)}
+                      {entry.relevanceHistory?.length ? ` · ${entry.relevanceHistory.length} ajustement(s)` : ""}
+                    </p>
+                  </div>
+                )}
               </article>
             ))}
+            {displayedHistory.length > 3 && (
+              <button
+                onClick={() => setShowFullHistory((value) => !value)}
+                className="w-full rounded-2xl border border-night/10 bg-white/65 px-4 py-3 text-sm font-medium text-night"
+              >
+                {showFullHistory ? "Réduire l’historique" : `Voir les ${displayedHistory.length - 3} autres entrées`}
+              </button>
+            )}
           </div>
         )}
       </section>

@@ -15,6 +15,7 @@ const initialProfile: UserProfile = {
   goal: "forme générale",
   customGoal: "",
   level: "intermédiaire",
+  favoriteSports: "",
   sessionsPerWeek: "",
   equipment: "",
   customEquipment: "",
@@ -201,6 +202,19 @@ export default function ProfilePage() {
                 <option className="bg-ink-950 text-night" key={level} value={level}>{level}</option>
               ))}
             </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm text-mist/70">Sports favoris</span>
+            <textarea
+              value={profile.favoriteSports}
+              onChange={(event) => updateProfile("favoriteSports", event.target.value)}
+              placeholder="Ex: course à pied, natation, swimrun, vélo, trail, renforcement..."
+              className="min-h-20 w-full resize-none rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-night outline-none placeholder:text-mist/35"
+            />
+            <p className="mt-2 text-xs leading-5 text-mist/55">
+              Le coach les privilégie quand c’est cohérent, mais peut proposer un sport complémentaire pour progresser ou récupérer.
+            </p>
           </label>
 
           <label className="block">

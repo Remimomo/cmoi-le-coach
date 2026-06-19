@@ -31,13 +31,26 @@ export function buildUserMemory(history: HistoryEntry[], profile: UserProfile): 
     ? Math.round(durations.reduce((total, value) => total + value, 0) / durations.length)
     : null;
   const preferredSessionType = mostCommon(sessions.map((session) => session?.type ?? "").filter(Boolean));
+  const ratedEntries = history.filter((entry) => typeof entry.relevanceScore === "number" && entry.session);
+  const comfortableEntries = ratedEntries.filter((entry) => {
+    const score = entry.relevanceScore ?? 50;
+    return score >= 35 && score <= 65;
+  });
+  const comfortableDurations = comfortableEntries
+    .map((entry) => extractMinutes(`${entry.session?.duration ?? ""} ${entry.session?.content ?? ""}`))
+    .filter((value): value is number => typeof value === "number");
+  const averageComfortableDuration = comfortableDurations.length
+    ? Math.round(comfortableDurations.reduce((total, value) => total + value, 0) / comfortableDurations.length)
+    : null;
   const firstName = profile.firstName.trim();
 
   let insight = firstName
     ? `${firstName}, je commence à apprendre ce qui te convient vraiment.`
     : "Je commence à apprendre ce qui te convient vraiment.";
 
-  if (history.length >= 3 && averageDuration && averageDuration < 50) {
+  if (ratedEntries.length >= 2 && averageComfortableDuration) {
+    insight = `Les séances autour de ${averageComfortableDuration} minutes semblent actuellement les plus adaptées à ton quotidien. Je vais utiliser cette tendance sans juger ta performance.`;
+  } else if (history.length >= 3 && averageDuration && averageDuration < 50) {
     insight = "Tu sembles mieux réussir les séances courtes ou modérées, souvent sous les 50 minutes. On va garder cette piste pour construire durablement.";
   } else if (history.length >= 3 && preferredSessionType) {
     insight = `Tu reviens souvent vers les séances de type “${preferredSessionType}”. Je vais m’en servir pour proposer quelque chose de plus naturel pour toi.`;

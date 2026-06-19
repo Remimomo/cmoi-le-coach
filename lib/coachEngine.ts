@@ -30,6 +30,7 @@ export type UserProfile = {
   goal: string;
   customGoal: string;
   level: string;
+  favoriteSports: string;
   sessionsPerWeek: string;
   equipment: string;
   customEquipment: string;
@@ -76,6 +77,11 @@ export type HistoryEntry = {
   timestamp?: number;
   program?: ProgramSession[];
   session?: ProgramSession;
+  relevanceScore?: number;
+  relevanceHistory?: {
+    value: number;
+    timestamp: number;
+  }[];
 };
 
 export const goalOptions = [
@@ -152,6 +158,107 @@ function getDaysSinceLastTraining(history: HistoryEntry[]) {
   return Math.max(0, Math.floor((Date.now() - latest) / (1000 * 60 * 60 * 24)));
 }
 
+function parseHistoryMinutes(entry: HistoryEntry) {
+  const match = entry.detail.match(/(\d+)\s*min/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseHistoryDistance(entry: HistoryEntry) {
+  const match = entry.detail.match(/(\d+(?:[.,]\d+)?)\s*km/i);
+  return match ? Number(match[1].replace(",", ".")) : 0;
+}
+
+function getRecentActivityContext(history: HistoryEntry[]) {
+  const entries = history
+    .filter((entry) => typeof entry.timestamp === "number")
+    .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
+  const latest = entries[0];
+
+  if (!latest?.timestamp) {
+    return {
+      latest,
+      daysSince: null as number | null,
+      recentMinutes: 0,
+      recentDistance: 0,
+      hasRecentStrava: false,
+      heavyRecentActivity: false
+    };
+  }
+
+  const now = Date.now();
+  const daysSince = Math.max(0, Math.floor((now - latest.timestamp) / (1000 * 60 * 60 * 24)));
+  const recentEntries = entries.filter((entry) => (entry.timestamp ?? 0) >= now - 3 * 24 * 60 * 60 * 1000);
+  const recentMinutes = recentEntries.reduce((total, entry) => total + parseHistoryMinutes(entry), 0);
+  const recentDistance = recentEntries.reduce((total, entry) => total + parseHistoryDistance(entry), 0);
+  const hasRecentStrava = recentEntries.some((entry) => entry.id.startsWith("strava-"));
+  const heavyRecentActivity = daysSince <= 2 && (recentMinutes >= 75 || recentDistance >= 12);
+
+  return { latest, daysSince, recentMinutes, recentDistance, hasRecentStrava, heavyRecentActivity };
+}
+
+function getFeedbackContext(history: HistoryEntry[]) {
+  const ratedEntries = history.filter((entry) => typeof entry.relevanceScore === "number" && entry.session);
+  if (!ratedEntries.length) {
+    return {
+      count: 0,
+      average: null as number | null,
+      trend: "",
+      durationHint: "",
+      intensityHint: "",
+      typeHint: "",
+      frequencyHint: "",
+      weekMomentHint: "",
+      bestDurationRange: ""
+    };
+  }
+
+  const average = Math.round(ratedEntries.reduce((total, entry) => total + (entry.relevanceScore ?? 50), 0) / ratedEntries.length);
+  const comfortableEntries = ratedEntries.filter((entry) => {
+    const score = entry.relevanceScore ?? 50;
+    return score >= 35 && score <= 65;
+  });
+  const tooHardEntries = ratedEntries.filter((entry) => (entry.relevanceScore ?? 50) > 65);
+  const tooLightEntries = ratedEntries.filter((entry) => (entry.relevanceScore ?? 50) < 35);
+  const comfortableDurations = comfortableEntries
+    .map(parseHistoryMinutes)
+    .filter((value) => value > 0)
+    .sort((a, b) => a - b);
+  const bestDurationRange = comfortableDurations.length
+    ? `${Math.max(20, Math.min(...comfortableDurations))} à ${Math.max(...comfortableDurations)} minutes`
+    : "";
+  const comfortableTypes = comfortableEntries.map((entry) => entry.session?.type ?? "").filter(Boolean);
+  const typeCounts = comfortableTypes.reduce<Record<string, number>>((acc, type) => {
+    acc[type] = (acc[type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const preferredType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const firstHalfScores = ratedEntries.slice(Math.ceil(ratedEntries.length / 2)).map((entry) => entry.relevanceScore ?? 50);
+  const secondHalfScores = ratedEntries.slice(0, Math.ceil(ratedEntries.length / 2)).map((entry) => entry.relevanceScore ?? 50);
+  const firstAverage = firstHalfScores.length ? firstHalfScores.reduce((total, value) => total + value, 0) / firstHalfScores.length : average;
+  const secondAverage = secondHalfScores.length ? secondHalfScores.reduce((total, value) => total + value, 0) / secondHalfScores.length : average;
+  const trend = Math.abs(secondAverage - firstAverage) >= 10
+    ? secondAverage > firstAverage
+      ? "les dernières séances semblent un peu plus difficiles qu'avant"
+      : "les dernières séances semblent mieux tolérées qu'avant"
+    : "les retours sont assez stables";
+
+  return {
+    count: ratedEntries.length,
+    average,
+    trend,
+    durationHint: bestDurationRange ? `Les séances de ${bestDurationRange} semblent actuellement les plus adaptées à ton quotidien.` : "",
+    intensityHint: tooHardEntries.length > tooLightEntries.length
+      ? "Réduire légèrement l'intensité ou ajouter plus de récupération."
+      : tooLightEntries.length > tooHardEntries.length
+        ? "Augmenter progressivement la durée ou l'intensité quand les autres signaux sont bons."
+        : "Garder une intensité proche de l'actuel.",
+    typeHint: preferredType ? `Le type "${preferredType}" ressort comme plutôt bien adapté.` : "",
+    frequencyHint: tooHardEntries.length >= 2 ? "Éviter d'empiler trop de séances exigeantes la même semaine." : "",
+    weekMomentHint: tooHardEntries.length >= 2 ? "Placer les séances les plus exigeantes après un jour plus léger." : "",
+    bestDurationRange
+  };
+}
+
 export function getGoal(profile: UserProfile) {
   return profile.goal.toLowerCase() === "autre" ? clean(profile.customGoal, "forme générale") : profile.goal.toLowerCase();
 }
@@ -160,6 +267,10 @@ export function getEquipment(profile: UserProfile) {
   const equipment = profile.equipment.toLowerCase();
   if (!equipment || equipment === "aucun") return "poids du corps";
   return equipment;
+}
+
+function getFavoriteSports(profile: UserProfile) {
+  return profile.favoriteSports?.toLowerCase() ?? "";
 }
 
 export function createNextTenDays() {
@@ -214,6 +325,8 @@ export function buildShapeSummary(
 ): ShapeSummary {
   const score = getReadinessScore(readiness, garmin);
   const qvt = analyzeQvtContext(readiness, garmin, profile, history);
+  const recentActivity = getRecentActivityContext(history);
+  const feedback = getFeedbackContext(history);
   const goal = getGoal(profile);
   const sleepConcern = readiness.sleep <= 5;
   const stressConcern = readiness.stress >= 7;
@@ -241,7 +354,15 @@ export function buildShapeSummary(
     : qvt.sedentaryRisk
       ? "activité récente faible"
       : "";
-  const markedSignals = [...signals, historyMessage, qvtSignal].filter(Boolean).slice(0, 4);
+  const stravaSignal = recentActivity.hasRecentStrava
+    ? recentActivity.heavyRecentActivity
+      ? `Strava récent chargé: ${recentActivity.recentDistance.toFixed(1)} km / ${recentActivity.recentMinutes} min sur 3 jours`
+      : "activité Strava récente prise en compte"
+    : "";
+  const feedbackSignal = feedback.count >= 2
+    ? feedback.durationHint || `Pertinence moyenne récente: ${feedback.average}/100`
+    : "";
+  const markedSignals = [...signals, historyMessage, stravaSignal, feedbackSignal, qvtSignal].filter(Boolean).slice(0, 4);
   const signalText = markedSignals.length ? markedSignals.join(", ") : "les voyants principaux sont corrects";
   const direction = sleepConcern || stressConcern || loadConcern || painConcern
     ? "On garde une marge, mais le contenu reste relié à ton objectif."
@@ -277,6 +398,7 @@ export function analyzeQvtContext(
 ): QvtAnalysis {
   const daysSinceLastTraining = getDaysSinceLastTraining(history);
   const recentSessions = countRecentSessions(history, 14);
+  const recentActivity = getRecentActivityContext(history);
   const constraintText = getConstraintText(profile, form);
   const mentalLoad = has(constraintText, [
     "semaine charg",
@@ -295,8 +417,8 @@ export function analyzeQvtContext(
   const sedentaryRisk =
     garmin.lastActivity === "repos" ||
     garmin.lastActivityDuration === "repos" ||
-    daysSinceLastTraining === null ||
-    daysSinceLastTraining >= 5 ||
+    (daysSinceLastTraining === null && !recentActivity.hasRecentStrava) ||
+    (daysSinceLastTraining !== null && daysSinceLastTraining >= 5) ||
     recentSessions <= 1 ||
     (garmin.trainingLoad === "faible" && recentSessions <= 2);
   const accessibleMode =
@@ -350,6 +472,8 @@ function isPerformanceGoal(goal: string) {
 function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness, garmin: GarminMockData, profile: UserProfile) {
   const note = `${day.note} ${form.globalNotes}`.toLowerCase();
   const goalText = getGoal(profile).toLowerCase();
+  const favoriteSports = getFavoriteSports(profile);
+  const preferenceText = `${note} ${goalText} ${favoriteSports}`;
   const qvt = analyzeQvtContext(readiness, garmin, profile, [], form);
   const easy = shouldBeEasy(readiness, garmin);
   const painful = readiness.pain >= 6 || garmin.painNotes.toLowerCase().includes("genou");
@@ -394,7 +518,7 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
     };
   }
 
-  if (has(goalText, ["swimrun", "swim run", "nage", "natation"])) {
+  if (has(preferenceText, ["swimrun", "swim run", "nage", "natation", "piscine"])) {
     const swimRunIntensity = easy || painful || beginner ? "modérée" : confirmed ? "intense" : "modérée";
 
     return {
@@ -405,11 +529,13 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       detailedContent:
         "Échauffement course très facile: 8 min\nCourse aisance respiratoire: 3 x 8 min\nRécupération entre blocs course: 2 min marche\nTirage élastique ou nage facile: 3 x 4 min\nRécupération entre blocs nage/tirage: 1 min\nGainage ventral: 3 x 30 sec\nRetour au calme: 5 min très faciles",
       objective: "progresser vers ton objectif swimrun sans perdre le lien entre course, nage et transitions.",
-      reason: "l'objectif déclaré est spécifique; même en restant prudent, la séance garde un contenu utile pour le swimrun."
+      reason: has(favoriteSports, ["natation", "swim", "nage"]) && !has(goalText, ["swimrun", "swim run", "nage", "natation"])
+        ? "la séance respecte tes sports favoris tout en gardant une place au complément course/renfo."
+        : "l'objectif déclaré est spécifique; même en restant prudent, la séance garde un contenu utile pour le swimrun."
     };
   }
 
-  if (has(`${note} ${goalText}`, ["trail", "montagne", "dénivelé"])) {
+  if (has(preferenceText, ["trail", "montagne", "dénivelé"])) {
     const requestedIntense = has(note, ["intense", "fort", "dur"]);
     const adjustedIntensity = easy || painful || beginner ? "modérée" : requestedIntense || confirmed ? "intense" : "modérée";
 
@@ -445,7 +571,7 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
     };
   }
 
-  if (has(note, ["renfo", "haut du corps", "gainage"]) || form.priority === "renfo" || has(goalText, ["renfo", "renforcement"])) {
+  if (has(note, ["renfo", "haut du corps", "gainage"]) || form.priority === "renfo" || has(preferenceText, ["renfo", "renforcement", "muscu", "gainage"])) {
     return {
       type: has(note, ["haut du corps"]) ? "renfo haut du corps" : "renfo maison",
       duration,
@@ -473,7 +599,7 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
     };
   }
 
-  if (has(note, ["plat", "courir", "footing"]) || has(goalText, ["10 km", "semi", "marathon", "trail", "swimrun", "courir"])) {
+  if (has(note, ["plat", "courir", "footing"]) || has(preferenceText, ["10 km", "semi", "marathon", "trail", "swimrun", "courir", "course", "running", "footing"])) {
     return {
       type: has(note, ["plat"]) ? "footing facile sur plat" : "footing facile",
       duration,
@@ -486,6 +612,18 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       reason: has(note, ["plat", "courir"])
          ? "respecte ta demande utilisateur et évite une surcharge car les signaux de récupération sont pris en compte."
         : "reste cohérent avec ton objectif tout en gardant une marge de récupération."
+    };
+  }
+
+  if (has(favoriteSports, ["vélo", "velo", "cyclisme", "bike"])) {
+    return {
+      type: "vélo endurance souple",
+      duration,
+      intensity: easy || beginner ? "facile" : "modérée",
+      content: "Sortie vélo en endurance, utile pour développer le cardio avec moins d'impact que la course.",
+      detailedContent: "Échauffement souple: 8 min\nVélo en aisance: 25 à 40 min\nCadence fluide: rester capable de parler\nRetour au calme: 5 min très faciles\nRécupération: hydratation et jambes légères",
+      objective: "utiliser un sport que tu apprécies pour construire l'endurance sans surcharge.",
+      reason: "tes sports favoris orientent la proposition, tout en gardant de la variété pour compléter ton objectif."
     };
   }
 
@@ -513,6 +651,8 @@ export function generateProgram(
 ): ProgramSession[] {
   const selectedDays = form.plannedDays.filter((day) => day.selected);
   const qvt = analyzeQvtContext(readiness, garmin, profile, history, form);
+  const recentActivity = getRecentActivityContext(history);
+  const feedback = getFeedbackContext(history);
   const recentProgramCount = history.filter((entry) => entry.program?.length).length;
   const levelHint =
     profile.level === "confirmé"
@@ -538,7 +678,11 @@ export function generateProgram(
         }
       : chooseSession(day, form, readiness, garmin, profile);
     const isHard = session.intensity === "intense" || session.type.toLowerCase().includes("fractionné");
-    const shouldSoften = previousWasHard || previousWasLong;
+    const shouldSoften =
+      previousWasHard ||
+      previousWasLong ||
+      (index === 0 && recentActivity.heavyRecentActivity) ||
+      (index === 0 && feedback.average !== null && feedback.average > 65);
     const coordinatedSession =
       shouldSoften && isHard
          ? {
@@ -549,8 +693,16 @@ export function generateProgram(
             reason: `${session.reason} La séance est coordonnée avec la précédente pour éviter deux charges fortes de suite.`
           }
         : session;
-  const recentHint =
-    recentProgramCount > 0 ? " L'historique local montre déjà un programme récent, donc la progression reste prudente." : "";
+  const recentHint = recentActivity.heavyRecentActivity
+    ? " Strava montre une charge récente notable, donc la première séance garde une marge."
+    : recentActivity.hasRecentStrava
+      ? " Les dernières activités Strava sont prises en compte dans la progression."
+      : recentProgramCount > 0
+        ? " L'historique local montre déjà un programme récent, donc la progression reste prudente."
+        : "";
+    const feedbackHint = feedback.count >= 2
+      ? ` Retour pertinence: ${feedback.trend}. ${feedback.durationHint} ${feedback.intensityHint} ${feedback.frequencyHint} ${feedback.weekMomentHint}`.trim()
+      : "";
     const sequenceHint =
       index === 0
          ? " Première séance placée avec une marge pour entrer progressivement dans la période."
@@ -566,7 +718,7 @@ export function generateProgram(
       day: day.dayName,
       dateLabel: day.dateLabel,
       ...coordinatedSession,
-      reason: `${coordinatedSession.reason}${sequenceHint}${recentHint}${levelHint}`
+      reason: `${coordinatedSession.reason}${sequenceHint}${recentHint}${levelHint}${feedbackHint ? ` ${feedbackHint}` : ""}`
     };
   });
 }
