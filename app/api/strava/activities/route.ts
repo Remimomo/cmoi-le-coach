@@ -30,13 +30,18 @@ function summarizeActivity(activity: Awaited<ReturnType<typeof getStravaActiviti
 }
 
 async function saveStravaSync(activities: ReturnType<typeof summarizeActivity>[]) {
-  await saveUserAppData({
-    stravaData: {
-      connected: true,
-      activities,
-      syncedAt: new Date().toISOString()
-    }
-  });
+  try {
+    await saveUserAppData({
+      stravaData: {
+        connected: true,
+        activities,
+        syncedAt: new Date().toISOString()
+      }
+    });
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Sauvegarde Supabase Strava impossible.";
+  }
 }
 
 export async function GET() {
@@ -52,15 +57,15 @@ export async function GET() {
     if (accessToken) {
       const activities = await getStravaActivities(accessToken);
       const summarized = activities.map(summarizeActivity);
-      await saveStravaSync(summarized);
-      return NextResponse.json({ ok: true, activities: summarized });
+      const saveWarning = await saveStravaSync(summarized);
+      return NextResponse.json({ ok: true, activities: summarized, saveWarning });
     }
 
     const refreshed = await refreshStravaToken(refreshToken as string);
     const activities = await getStravaActivities(refreshed.access_token);
     const summarized = activities.map(summarizeActivity);
-    await saveStravaSync(summarized);
-    const response = NextResponse.json({ ok: true, activities: summarized });
+    const saveWarning = await saveStravaSync(summarized);
+    const response = NextResponse.json({ ok: true, activities: summarized, saveWarning });
 
     response.cookies.set(
       STRAVA_ACCESS_COOKIE,

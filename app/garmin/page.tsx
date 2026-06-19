@@ -34,7 +34,9 @@ export default function GarminPage() {
         window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(activityData.activities));
         setStravaStatus(
           activityData.activities.length > 0
-            ? `${activityData.activities.length} activité(s) Strava synchronisée(s).`
+            ? activityData.saveWarning
+              ? `${activityData.activities.length} activité(s) Strava récupérée(s). Sauvegarde Supabase à finaliser.`
+              : `${activityData.activities.length} activité(s) Strava synchronisée(s).`
             : "Strava est connecté, mais aucune activité n'a été renvoyée par Strava."
         );
         return;
