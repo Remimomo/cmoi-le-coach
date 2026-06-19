@@ -49,8 +49,13 @@ export async function refreshStravaToken(refreshToken: string): Promise<StravaTo
   return response.json();
 }
 
-export async function getStravaActivities(accessToken: string, limit = 5): Promise<StravaActivity[]> {
-  const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=${limit}`, {
+export async function getStravaActivities(accessToken: string, limit = 30): Promise<StravaActivity[]> {
+  const after = Math.floor((Date.now() - 1000 * 60 * 60 * 24 * 365) / 1000);
+  const params = new URLSearchParams({
+    per_page: String(limit),
+    after: String(after)
+  });
+  const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`
     },

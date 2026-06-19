@@ -598,7 +598,7 @@ export default function Home() {
           Profil
         </Link>
         <Link href="/garmin" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
-          Connexions
+          STRAVA
         </Link>
         <Link href="/entreprise" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
           Entreprise

@@ -20,6 +20,33 @@ export default function GarminPage() {
   const [stravaAuthorizeUrl, setStravaAuthorizeUrl] = useState<string | null>(null);
   const [isStravaConnected, setIsStravaConnected] = useState(false);
   const [stravaActivities, setStravaActivities] = useState<StravaActivitySummary[]>([]);
+  const [isSyncingStrava, setIsSyncingStrava] = useState(false);
+
+  async function syncStravaActivities() {
+    setIsSyncingStrava(true);
+
+    try {
+      const response = await fetch("/api/strava/sync");
+      const activityData = await response.json();
+
+      if (activityData.ok && Array.isArray(activityData.activities)) {
+        setStravaActivities(activityData.activities);
+        window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(activityData.activities));
+        setStravaStatus(
+          activityData.activities.length > 0
+            ? `${activityData.activities.length} activité(s) Strava synchronisée(s).`
+            : "Strava est connecté, mais aucune activité n'a été renvoyée par Strava."
+        );
+        return;
+      }
+
+      setStravaStatus(activityData.error ?? "Strava est connecté, mais la synchronisation a échoué.");
+    } catch {
+      setStravaStatus("Strava est connecté, mais la synchronisation a échoué.");
+    } finally {
+      setIsSyncingStrava(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/strava/status")
@@ -29,15 +56,7 @@ export default function GarminPage() {
         setStravaAuthorizeUrl(data.authorizeUrl ?? null);
         setIsStravaConnected(data.status === "connected");
         if (data.status === "connected") {
-          fetch("/api/strava/sync")
-            .then((response) => response.json())
-            .then((activityData) => {
-              if (activityData.ok && Array.isArray(activityData.activities)) {
-                setStravaActivities(activityData.activities);
-                window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(activityData.activities));
-              }
-            })
-            .catch(() => setStravaActivities([]));
+          void syncStravaActivities();
         }
       })
       .catch(() => setStravaStatus("Statut Strava indisponible pour le moment."));
@@ -58,7 +77,7 @@ export default function GarminPage() {
       <header className="mb-5 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-mist/50">C&apos;moiLeCoach</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-night">Connexions sport</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-night">STRAVA</h1>
         </div>
         <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full border border-night/10 bg-white/70">
           <ArrowLeft className="h-5 w-5 text-moss" />
@@ -79,6 +98,11 @@ export default function GarminPage() {
             Connecter Strava
           </button>
         ) : null}
+        {isStravaConnected ? (
+          <button onClick={syncStravaActivities} disabled={isSyncingStrava} className="mt-4 w-full rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
+            {isSyncingStrava ? "Synchronisation..." : "Synchroniser Strava"}
+          </button>
+        ) : null}
         {stravaActivities.length > 0 ? (
           <div className="mt-4 space-y-2">
             {stravaActivities.map((activity) => (
@@ -90,9 +114,9 @@ export default function GarminPage() {
               </div>
             ))}
           </div>
-        ) : isStravaConnected ? (
+        ) : isStravaConnected && !isSyncingStrava ? (
           <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm text-mist/70">
-            Strava est connecté. Aucune activité récente à afficher pour le moment.
+            Aucune activité Strava reçue pour le moment. Lance une synchronisation, puis vérifie que tes activités existent bien sur Strava et que l&apos;autorisation donnée à C&apos;moiLeCoach permet de lire les activités.
           </p>
         ) : null}
         {isStravaConnected ? (
