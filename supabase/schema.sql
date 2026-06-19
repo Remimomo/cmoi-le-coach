@@ -7,8 +7,12 @@ create table if not exists public.user_app_data (
   current_program jsonb not null default '[]'::jsonb,
   history jsonb not null default '[]'::jsonb,
   memory jsonb not null default '{}'::jsonb,
+  strava_data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_app_data
+add column if not exists strava_data jsonb not null default '{}'::jsonb;
 
 alter table public.user_app_data enable row level security;
 

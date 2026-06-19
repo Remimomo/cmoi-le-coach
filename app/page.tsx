@@ -44,6 +44,15 @@ type ChatMessage = {
   text: string;
 };
 
+type StravaActivitySummary = {
+  id: number;
+  name: string;
+  type: string;
+  distanceKm: number;
+  movingMinutes: number;
+  startDate: string;
+};
+
 function coachMessage(text: string): ChatMessage {
   return { role: "coach", text };
 }
@@ -161,10 +170,11 @@ export default function Home() {
   const [expandedSessionIds, setExpandedSessionIds] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [coachInput, setCoachInput] = useState("");
-  const [coachReply, setCoachReply] = useState("Je regarde ta forme, tes contraintes et ton historique pour proposer quelque chose de réaliste.");
+  const [coachReply, setCoachReply] = useState("Je suis là pour parler sport, forme, récup, motivation et alimentation simple.");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    coachMessage("Je suis là pour parler sport, forme, récup, motivation et alimentation simple. Pour le reste, je fais semblant d’être très concentré sur mes lacets.")
+    coachMessage("Je suis là pour parler sport, forme, récup, motivation et alimentation simple.")
   ]);
+  const [stravaActivities, setStravaActivities] = useState<StravaActivitySummary[]>([]);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasLoadedLocalData, setHasLoadedLocalData] = useState(false);
@@ -180,6 +190,7 @@ export default function Home() {
     const savedForm = readStorage("auto-coach-planner", initialForm);
     const savedHistory = window.localStorage.getItem("auto-coach-history");
     const savedProgram = window.localStorage.getItem("auto-coach-current-program");
+    const savedStravaActivities = window.localStorage.getItem("auto-coach-strava-activities");
 
     setProfile(normalizeProfile(savedProfile));
     setReadiness(savedReadiness);
@@ -192,6 +203,7 @@ export default function Home() {
     });
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     if (savedProgram) setProgram(JSON.parse(savedProgram));
+    if (savedStravaActivities) setStravaActivities(JSON.parse(savedStravaActivities));
     setHasLoadedLocalData(true);
   }, []);
 
@@ -222,6 +234,10 @@ export default function Home() {
         }
         if (Array.isArray(result.data.currentProgram) && result.data.currentProgram.length > 0) setProgram(result.data.currentProgram);
         if (Array.isArray(result.data.history) && result.data.history.length > 0) setHistory(result.data.history);
+        if (Array.isArray(result.data.stravaData?.activities)) {
+          setStravaActivities(result.data.stravaData.activities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.data.stravaData.activities));
+        }
         setCloudStatus("Données synchronisées avec ton compte.");
       })
       .catch(() => setCloudStatus("Mode local actif. Connecte-toi pour synchroniser."))
@@ -253,8 +269,18 @@ export default function Home() {
     window.localStorage.setItem("auto-coach-current-program", JSON.stringify(program));
   }, [program]);
 
-  const localSummary = useMemo(() => buildShapeSummary(readiness, garminData, profile, form.priority, history), [readiness, garminData, profile, form.priority, history]);
-  const userMemory = useMemo(() => buildUserMemory(history, profile), [history, profile]);
+  const stravaHistory = useMemo<HistoryEntry[]>(() => {
+    return stravaActivities.map((activity) => ({
+      id: `strava-${activity.id}`,
+      title: `Strava · ${activity.name}`,
+      detail: `${activity.type}, ${activity.distanceKm} km, ${activity.movingMinutes} min`,
+      date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(new Date(activity.startDate)),
+      timestamp: new Date(activity.startDate).getTime()
+    }));
+  }, [stravaActivities]);
+  const coachHistory = useMemo(() => [...history, ...stravaHistory], [history, stravaHistory]);
+  const localSummary = useMemo(() => buildShapeSummary(readiness, garminData, profile, form.priority, coachHistory), [readiness, garminData, profile, form.priority, coachHistory]);
+  const userMemory = useMemo(() => buildUserMemory(coachHistory, profile), [coachHistory, profile]);
   const activeSummary = summary ?? localSummary;
   const selectedDayCount = form.plannedDays.filter((day) => day.selected).length;
 
@@ -336,13 +362,13 @@ export default function Home() {
   async function buildProgram() {
     setIsGenerating(true);
     const coachForm = { ...form, duration: readiness.time };
-    const fallbackProgram = generateProgram(readiness, coachForm, profile, garminData, history);
+    const fallbackProgram = generateProgram(readiness, coachForm, profile, garminData, coachHistory);
 
     try {
       const response = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ readiness, profile, garminData, form: coachForm, history })
+        body: JSON.stringify({ readiness, profile, garminData, form: coachForm, history: coachHistory })
       });
       const result = await response.json();
       const nextProgram = result.program?.length ? result.program : fallbackProgram;
@@ -358,7 +384,7 @@ export default function Home() {
       }, "Programme sauvegardé sur ton compte.");
       setCoachReply(
         result.source === "openai"
-          ? "Programme généré avec l’IA connectée. J’ai gardé un ton prudent et humain."
+           ? "Programme généré avec l’IA connectée. J’ai gardé un ton prudent et humain."
           : "Programme généré en mode simulation intelligente. Tu peux déjà tester la logique avant OpenAI."
       );
     } catch {
@@ -416,7 +442,7 @@ export default function Home() {
 
         const isRun = session.type.toLowerCase().includes("footing") || session.type.toLowerCase().includes("trail");
         const alternative = isRun
-          ? {
+           ? {
               type: "renfo complémentaire maison",
               intensity: "facile",
               content: "Séance de renforcement simple pour remplacer la course sans perdre le fil.",
@@ -499,7 +525,7 @@ export default function Home() {
       const response = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ readiness, profile, garminData, form, history, message })
+        body: JSON.stringify({ readiness, profile, garminData, form, history: coachHistory, message })
       });
       const result = await response.json();
       const reply = result.reply ?? `Je prends en compte: "${message}". On reste sur une approche simple, réaliste et durable. Allez, on construit ça proprement.`;
@@ -639,7 +665,7 @@ export default function Home() {
                 onClick={() => togglePlannedDay(day.id)}
                 className={`min-h-24 rounded-3xl border p-4 text-left transition ${
                   day.selected
-                    ? "border-moss bg-moss/35 text-night shadow-[0_0_0_2px_rgba(143,191,159,0.35)]"
+                     ? "border-moss bg-moss/35 text-night shadow-[0_0_0_2px_rgba(143,191,159,0.35)]"
                     : "border-night/10 bg-white/65 text-mist"
                 }`}
               >
@@ -807,4 +833,3 @@ export default function Home() {
     </AuthGate>
   );
 }
-

@@ -4,7 +4,7 @@ import { LogOut, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type AuthUser = {
-  email?: string;
+  email: string;
 };
 
 export function AccountStatus() {

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 type AuthUser = {
   id: string;
-  email?: string;
+  email: string;
 };
 
 export function AuthGate({ children }: { children: ReactNode }) {

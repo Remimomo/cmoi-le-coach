@@ -9,6 +9,7 @@ export type UserAppData = {
   currentProgram?: unknown;
   history?: unknown;
   memory?: unknown;
+  stravaData?: unknown;
 };
 
 type UserAppDataRow = {
@@ -20,6 +21,7 @@ type UserAppDataRow = {
   current_program: unknown;
   history: unknown;
   memory: unknown;
+  strava_data?: unknown;
   updated_at: string;
 };
 
@@ -45,7 +47,7 @@ function getSupabaseConfig() {
 }
 
 async function getConnectedUser(): Promise<{ user: AuthUser; accessToken: string }> {
-  const { accessToken } = getAuthCookies();
+  const { accessToken } = await getAuthCookies();
   const user = await getSupabaseUser(accessToken);
 
   if (!accessToken || !user?.id) {
@@ -87,6 +89,7 @@ export async function readUserAppData() {
       currentProgram: row.current_program,
       history: row.history,
       memory: row.memory,
+      stravaData: row.strava_data ?? {},
       updatedAt: row.updated_at
     }
   };
@@ -121,7 +124,8 @@ export async function saveUserAppData(data: UserAppData) {
       planner: pickField(data.planner, existing?.planner, {}),
       current_program: pickField(data.currentProgram, existing?.current_program, []),
       history: pickField(data.history, existing?.history, []),
-      memory: pickField(data.memory, existing?.memory, {})
+      memory: pickField(data.memory, existing?.memory, {}),
+      strava_data: pickField(data.stravaData, existing?.strava_data, {})
     })
   });
 

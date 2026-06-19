@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 type AuthUser = {
   id: string;
-  email?: string;
+  email: string;
 };
 
 export default function AccountPage() {
@@ -35,7 +35,7 @@ export default function AccountPage() {
 
     setMessage(
       data.configured
-        ? "Connecte-toi pour accéder à ton coach."
+         ? "Connecte-toi pour accéder à ton coach."
       : "Supabase n'est pas encore configuré. Il faudra ajouter les clés sur Vercel."
     );
   }, [recoveryToken, router]);
@@ -99,7 +99,7 @@ export default function AccountPage() {
 
       setMessage(
         response.ok
-          ? "Email envoyé. Ouvre le lien reçu pour choisir un nouveau mot de passe."
+           ? "Email envoyé. Ouvre le lien reçu pour choisir un nouveau mot de passe."
           : data.error ?? "Envoi impossible pour le moment."
       );
     } finally {
@@ -194,7 +194,7 @@ export default function AccountPage() {
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="text-sm text-mist/70">Mot de passe</span>
                 <button type="button" onClick={requestPasswordReset} disabled={isLoading || !configured} className="text-xs font-medium text-ember disabled:opacity-50">
-                  Mot de passe oublié ?
+                  Mot de passe oublié 
                 </button>
               </div>
               <div className="flex items-center rounded-2xl border border-night/10 bg-white/70 px-4">

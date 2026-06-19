@@ -16,13 +16,13 @@ export type CoachInput = {
   garminData: GarminMockData;
   form: ProgramForm;
   history: HistoryEntry[];
-  message?: string;
+  message: string;
 };
 
 export type CoachOutput = {
   summary: ShapeSummary;
-  program: ProgramSession[];
-  reply?: string;
+  program?: ProgramSession[];
+  reply: string;
   source: "openai" | "mock";
 };
 
@@ -32,11 +32,11 @@ function buildFallbackReply(input: CoachInput) {
   const message = input.message.toLowerCase();
   const lastSession = input.history.find((entry) => entry.session)?.session;
   const context = lastSession
-    ? `Je garde aussi en tÃªte ta derniÃ¨re sÃ©ance mÃ©morisÃ©e: ${lastSession.type}, ${lastSession.duration}.`
-    : "Comme je nâ€™ai pas encore beaucoup dâ€™historique, je prÃ©fÃ¨re construire simple et propre.";
+     ? `Je garde aussi en tête ta dernière séance mémorisée: ${lastSession.type}, ${lastSession.duration}.`
+    : "Comme je n'ai pas encore beaucoup d'historique, je préfère construire simple et propre.";
 
   if (message.includes("fatigu") || message.includes("sommeil")) {
-    return `${context} Si tu te sens fatiguÃ©, vise une sÃ©ance facile de 30 Ã  45 min ou 20 min de mobilitÃ©/gainage. Pas besoin de faire le hÃ©ros: aujourdâ€™hui, le vrai boss, câ€™est la rÃ©gularitÃ©.`;
+    return `${context} Si tu te sens fatigué, vise une séance facile de 30 à 45 min ou 20 min de mobilité/gainage. Pas besoin de faire le héros: aujourd'hui, le vrai boss, c'est la régularité.`;
   }
 
   if (
@@ -44,26 +44,26 @@ function buildFallbackReply(input: CoachInput) {
     message.includes("nutrition") ||
     message.includes("manger") ||
     message.includes("repas") ||
-    message.includes("protÃ©ine") ||
+    message.includes("protéine") ||
     message.includes("glucide") ||
     message.includes("hydratation")
   ) {
-    return `${context} CÃ´tÃ© alimentation, je reste simple: avant une sÃ©ance, vise quelque chose de digeste avec un peu dâ€™Ã©nergie; aprÃ¨s, pense protÃ©ines, fÃ©culents ou fruit, et hydratation. Pas besoin de transformer ton frigo en laboratoire, on veut juste aider ton corps Ã  suivre le rythme.`;
+    return `${context} Côté alimentation, je reste simple: avant une séance, vise quelque chose de digeste avec un peu d'énergie; après, pense protéines, féculents ou fruit, et hydratation. Pas besoin de transformer ton frigo en laboratoire, on veut juste aider ton corps à suivre le rythme.`;
   }
 
   if (message.includes("renfo") || message.includes("muscu") || message.includes("gainage")) {
-    return `${context} Proposition simple: 4 tours avec 15 squats, 10 fentes par jambe, 12 ponts fessiers et 30 secondes de gainage. RÃ©cupÃ¨re 60 secondes entre les exercices. Propre, efficace, sans cinÃ©ma.`;
+    return `${context} Proposition simple: 4 tours avec 15 squats, 10 fentes par jambe, 12 ponts fessiers et 30 secondes de gainage. Récupère 60 secondes entre les exercices. Propre, efficace, sans cinéma.`;
   }
 
-  if (message.includes("fractionnÃ©") || message.includes("intense")) {
-    return `${context} Si tes signaux de forme sont bons, tu peux faire 12 min faciles, puis 8 x 1 min rapide / 1 min lente, et 8 min faciles. Si le sommeil est moyen, transforme Ã§a en footing facile: ton futur toi dira merci.`;
+  if (message.includes("fractionné") || message.includes("intense")) {
+    return `${context} Si tes signaux de forme sont bons, tu peux faire 12 min faciles, puis 8 x 1 min rapide / 1 min lente, et 8 min faciles. Si le sommeil est moyen, transforme ça en footing facile: ton futur toi dira merci.`;
   }
 
   if (message.includes("trail") || message.includes("montagne")) {
-    return `${context} Pour du trail, je proposerais une sÃ©ance vallonnÃ©e: 10 min faciles, 4 Ã  5 montÃ©es de 3 min contrÃ´lÃ©es, rÃ©cupÃ©ration en descente tranquille, puis 8 min faciles. Technique avant ego, toujours.`;
+    return `${context} Pour du trail, je proposerais une séance vallonnée: 10 min faciles, 4 à 5 montées de 3 min contrôlées, récupération en descente tranquille, puis 8 min faciles. Technique avant ego, toujours.`;
   }
 
-  return `${context} Je prends ta demande: "${input.message}". On reste sur une approche sportive simple, motivante et durable. Donne-moi ton envie prÃ©cise, ta fatigue ou ton temps dispo, et je te transforme Ã§a en sÃ©ance claire.`;
+  return `${context} Je prends ta demande: "${input.message}". On reste sur une approche sportive simple, motivante et durable. Donne-moi ton envie précise, ta fatigue ou ton temps dispo, et je te transforme ça en séance claire.`;
 }
 
 function fallbackCoach(input: CoachInput): CoachOutput {
@@ -71,7 +71,7 @@ function fallbackCoach(input: CoachInput): CoachOutput {
   const program = generateProgram(input.readiness, input.form, input.profile, input.garminData, input.history);
   const reply = buildFallbackReply(input);
 
-  return { summary, program, reply, source: "mock" };
+  return { summary, program, reply: reply ?? "", source: "mock" };
 }
 
 export async function runCoach(input: CoachInput): Promise<CoachOutput> {
@@ -95,7 +95,7 @@ export async function runCoach(input: CoachInput): Promise<CoachOutput> {
           },
           {
             role: "user",
-            content: `CrÃ©e une synthÃ¨se et un programme. DonnÃ©es: ${JSON.stringify(input)}. Format JSON: {"summary":{"status":"...","explanation":"..."},"program":[{"id":"...","day":"...","dateLabel":"...","type":"...","duration":"...","intensity":"facile|modÃ©rÃ©e|intense","content":"...","detailedContent":"...","objective":"...","reason":"..."}],"reply":"optionnel"}`
+            content: `Crée une synthèse et un programme. Données: ${JSON.stringify(input)}. Format JSON: {"summary":{"status":"...","explanation":"..."},"program":[{"id":"...","day":"...","dateLabel":"...","type":"...","duration":"...","intensity":"facile|modérée|intense","content":"...","detailedContent":"...","objective":"...","reason":"..."}],"reply":"optionnel"}`
           }
         ]
       })
@@ -113,7 +113,7 @@ export async function runCoach(input: CoachInput): Promise<CoachOutput> {
     return {
       summary: parsed.summary,
       program: parsed.program,
-      reply: parsed.reply,
+      reply: parsed.reply ?? "",
       source: "openai"
     };
   } catch {

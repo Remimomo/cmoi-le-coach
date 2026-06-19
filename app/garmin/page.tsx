@@ -38,11 +38,21 @@ function hasMeaningfulValue(value: unknown): boolean {
   return Boolean(value);
 }
 
+type StravaActivitySummary = {
+  id: number;
+  name: string;
+  type: string;
+  distanceKm: number;
+  movingMinutes: number;
+  startDate: string;
+};
+
 export default function GarminPage() {
   const [garminData, setGarminData] = useState<GarminMockData>(initialGarminMock);
-  const [garminStatus, setGarminStatus] = useState("Vérification en cours...");
   const [stravaStatus, setStravaStatus] = useState("Vérification Strava en cours...");
   const [stravaAuthorizeUrl, setStravaAuthorizeUrl] = useState<string | null>(null);
+  const [isStravaConnected, setIsStravaConnected] = useState(false);
+  const [stravaActivities, setStravaActivities] = useState<StravaActivitySummary[]>([]);
   const [syncStatus, setSyncStatus] = useState("Sauvegarde locale active.");
   const [hasLoadedGarminData, setHasLoadedGarminData] = useState(false);
   const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
@@ -66,7 +76,7 @@ export default function GarminPage() {
     fetch("/api/user-data")
       .then((response) => response.json())
       .then((result) => {
-        if (result.ok && result.data?.garminData && hasMeaningfulValue(result.data.garminData)) {
+        if (result.ok && result.data.garminData && hasMeaningfulValue(result.data.garminData)) {
           const cloudGarminData = { ...initialGarminMock, ...result.data.garminData };
           setGarminData(cloudGarminData);
           window.localStorage.setItem("auto-coach-garmin-test", JSON.stringify(cloudGarminData));
@@ -102,18 +112,23 @@ export default function GarminPage() {
   }, [hasLoadedGarminData, hasCheckedCloudData, hasEditedGarminData, garminData]);
 
   useEffect(() => {
-    fetch("/api/garmin/status")
-      .then((response) => response.json())
-      .then((data) => setGarminStatus(data.message ?? "Statut Garmin indisponible."))
-      .catch(() => setGarminStatus("Statut Garmin indisponible pour le moment."));
-  }, []);
-
-  useEffect(() => {
     fetch("/api/strava/status")
       .then((response) => response.json())
       .then((data) => {
         setStravaStatus(data.message ?? "Statut Strava indisponible.");
         setStravaAuthorizeUrl(data.authorizeUrl ?? null);
+        setIsStravaConnected(data.status === "connected");
+        if (data.status === "connected") {
+          fetch("/api/strava/sync")
+            .then((response) => response.json())
+            .then((activityData) => {
+              if (activityData.ok && Array.isArray(activityData.activities)) {
+                setStravaActivities(activityData.activities);
+                window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(activityData.activities));
+              }
+            })
+            .catch(() => setStravaActivities([]));
+        }
       })
       .catch(() => setStravaStatus("Statut Strava indisponible pour le moment."));
   }, []);
@@ -121,6 +136,15 @@ export default function GarminPage() {
   function updateGarminData(key: keyof GarminMockData, value: string) {
     setHasEditedGarminData(true);
     setGarminData((current) => ({ ...current, [key]: value }));
+  }
+
+  async function disconnectStrava() {
+    await fetch("/api/strava/disconnect", { method: "POST" });
+    setIsStravaConnected(false);
+    setStravaAuthorizeUrl("/api/strava/connect");
+    setStravaActivities([]);
+    window.localStorage.removeItem("auto-coach-strava-activities");
+    setStravaStatus("Strava est déconnecté. Tu peux reconnecter ton compte.");
   }
 
   return (
@@ -140,13 +164,6 @@ export default function GarminPage() {
 
       <p className="mb-4 rounded-2xl bg-white/70 px-4 py-3 text-xs leading-5 text-mist/70 shadow-soft">{syncStatus}</p>
 
-      <section className="mb-4 rounded-[28px] border border-ember/20 bg-ember/10 p-5 shadow-soft">
-        <p className="mb-1 text-sm font-medium text-ember">Connexion officielle Garmin</p>
-        <p className="text-sm leading-6 text-mist/80">
-          {garminStatus} En attendant, ces données test permettent de valider le comportement du coach.
-        </p>
-      </section>
-
       <section className="mb-4 rounded-[28px] border border-moss/25 bg-white/80 p-5 shadow-soft">
         <p className="mb-1 text-sm font-medium text-moss">Connexion Strava</p>
         <p className="text-sm leading-6 text-mist/80">{stravaStatus}</p>
@@ -154,13 +171,34 @@ export default function GarminPage() {
           <a href="/api/strava/connect" className="mt-4 block rounded-2xl bg-ember px-4 py-3 text-center font-semibold text-white">
             Connecter Strava
           </a>
-        ) : (
+        ) : !isStravaConnected ? (
           <button disabled className="mt-4 w-full rounded-2xl bg-ember px-4 py-3 font-semibold text-white opacity-50">
             Connecter Strava
           </button>
-        )}
+        ) : null}
+        {stravaActivities.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {stravaActivities.map((activity) => (
+              <div key={activity.id} className="rounded-2xl bg-moss/10 px-4 py-3">
+                <p className="truncate text-sm font-medium text-night">{activity.name}</p>
+                <p className="mt-1 text-xs text-mist/70">
+                  {activity.type} · {activity.distanceKm} km · {activity.movingMinutes} min
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : isStravaConnected ? (
+          <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm text-mist/70">
+            Strava est connecté. Aucune activité récente à afficher pour le moment.
+          </p>
+        ) : null}
+        {isStravaConnected ? (
+          <button onClick={disconnectStrava} className="mt-4 w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night">
+            Déconnecter Strava
+          </button>
+        ) : null}
         <p className="mt-3 text-xs leading-5 text-mist/60">
-          Quand Strava et Garmin seront disponibles, le coach pourra croiser les activités Strava avec les données de récupération Garmin.
+          Les activités Strava synchronisées sont sauvegardées sur ton compte et utilisées par le coach.
         </p>
       </section>
 
@@ -249,4 +287,3 @@ export default function GarminPage() {
     </AuthGate>
   );
 }
-

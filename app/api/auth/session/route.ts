@@ -4,7 +4,7 @@ import { getSupabaseUser } from "@/services/supabaseAuth";
 
 export async function GET() {
   try {
-    const { accessToken } = getAuthCookies();
+    const { accessToken } = await getAuthCookies();
     const user = await getSupabaseUser(accessToken);
 
     return NextResponse.json({

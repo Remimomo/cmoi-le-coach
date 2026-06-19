@@ -70,7 +70,7 @@ export default function ProfilePage() {
     fetch("/api/user-data")
       .then((response) => response.json())
       .then((result) => {
-        if (result.ok && result.data?.profile && hasProfileValue(result.data.profile)) {
+        if (result.ok && result.data.profile && hasProfileValue(result.data.profile)) {
           const cloudProfile = normalizeProfile(mergeProfileWithoutEmpty(initialProfile, result.data.profile));
           setProfile(cloudProfile);
           window.localStorage.setItem("auto-coach-profile", JSON.stringify(cloudProfile));
