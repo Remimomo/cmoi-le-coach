@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Eye, EyeOff, LogOut, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowLeft, Eye, EyeOff, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 type AuthUser = {
   id: string;
@@ -10,25 +11,49 @@ type AuthUser = {
 };
 
 export default function AccountPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [configured, setConfigured] = useState(false);
   const [message, setMessage] = useState("Vérification du compte...");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
 
-  async function refreshSession() {
+  const refreshSession = useCallback(async () => {
     const response = await fetch("/api/auth/session");
     const data = await response.json();
     setConfigured(Boolean(data.configured));
     setUser(data.user ?? null);
-    setMessage(data.configured ? "Tu peux créer un compte ou te connecter." : "Supabase n'est pas encore configuré. La page est prête, il faudra ajouter les clés sur Vercel.");
-  }
+
+    if (data.user && !recoveryToken) {
+      router.replace("/");
+      return;
+    }
+
+    setMessage(
+      data.configured
+        ? "Connecte-toi pour accéder à ton coach."
+      : "Supabase n'est pas encore configuré. Il faudra ajouter les clés sur Vercel."
+    );
+  }, [recoveryToken, router]);
 
   useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const token = hash.get("access_token");
+    const type = hash.get("type");
+
+    if (token && type === "recovery") {
+      setRecoveryToken(token);
+      setMessage("Choisis ton nouveau mot de passe.");
+      window.history.replaceState(null, "", "/compte");
+      return;
+    }
+
     refreshSession();
-  }, []);
+  }, [refreshSession]);
 
   async function submit(mode: "signup" | "login") {
     setIsLoading(true);
@@ -48,17 +73,69 @@ export default function AccountPage() {
       }
 
       setUser(data.user ?? null);
-      setMessage(mode === "signup" ? "Compte créé. Bienvenue dans C'moiLeCoach." : "Connexion réussie.");
-      await refreshSession();
+      setMessage(mode === "signup" ? "Compte créé. Ouverture de ton coach..." : "Connexion réussie. Ouverture de ton coach...");
+      router.replace("/");
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
-    setMessage("Déconnexion réussie.");
+  async function requestPasswordReset() {
+    if (!email) {
+      setMessage("Indique ton email, puis clique sur mot de passe oublié.");
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage("Envoi du lien de réinitialisation...");
+
+    try {
+      const response = await fetch("/api/auth/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json();
+
+      setMessage(
+        response.ok
+          ? "Email envoyé. Ouvre le lien reçu pour choisir un nouveau mot de passe."
+          : data.error ?? "Envoi impossible pour le moment."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function updatePassword() {
+    if (!recoveryToken || newPassword.length < 6) {
+      setMessage("Choisis un mot de passe de 6 caractères minimum.");
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage("Mise à jour du mot de passe...");
+
+    try {
+      const response = await fetch("/api/auth/update-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: recoveryToken, password: newPassword })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.error ?? "Modification impossible pour le moment.");
+        return;
+      }
+
+      setRecoveryToken(null);
+      setNewPassword("");
+      setPassword("");
+      setMessage("Mot de passe modifié. Tu peux maintenant te connecter.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -77,21 +154,27 @@ export default function AccountPage() {
         <div className="mb-5 flex items-center justify-between">
           <div>
             <p className="mb-1 text-sm text-moss">Accès personnel</p>
-            <h2 className="text-lg font-medium text-night">{user ? "Tu es connecté" : "Créer ou ouvrir ton compte"}</h2>
+            <h2 className="text-lg font-medium text-night">{recoveryToken ? "Nouveau mot de passe" : "Créer ou ouvrir ton compte"}</h2>
           </div>
           <UserRound className="h-5 w-5 text-ember" />
         </div>
 
         <p className="mb-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/80">{message}</p>
 
-        {user ? (
+        {recoveryToken ? (
           <div className="space-y-4">
-            <p className="rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-sm text-mist">
-              Connecté avec : <span className="font-medium text-night">{user.email ?? user.id}</span>
-            </p>
-            <button onClick={logout} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ember px-4 py-3 font-semibold text-white">
-              <LogOut className="h-5 w-5" />
-              Se déconnecter
+            <label className="block">
+              <span className="mb-2 block text-sm text-mist/70">Nouveau mot de passe</span>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="6 caractères minimum"
+                className="w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 text-night outline-none placeholder:text-mist/35"
+              />
+            </label>
+            <button disabled={isLoading} onClick={updatePassword} className="w-full rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
+              Enregistrer le nouveau mot de passe
             </button>
           </div>
         ) : (
@@ -108,7 +191,12 @@ export default function AccountPage() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm text-mist/70">Mot de passe</span>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-sm text-mist/70">Mot de passe</span>
+                <button type="button" onClick={requestPasswordReset} disabled={isLoading || !configured} className="text-xs font-medium text-ember disabled:opacity-50">
+                  Mot de passe oublié ?
+                </button>
+              </div>
               <div className="flex items-center rounded-2xl border border-night/10 bg-white/70 px-4">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -140,7 +228,7 @@ export default function AccountPage() {
         )}
 
         <p className="mt-5 text-xs leading-5 text-mist/60">
-          Les comptes sont prévus pour synchroniser plus tard le profil, l’historique et les connexions sportives entre ordinateur et téléphone.
+          Ton compte permet de retrouver ton profil, ton état du jour et tes programmes entre ordinateur et téléphone.
         </p>
       </section>
     </main>

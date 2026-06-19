@@ -61,6 +61,33 @@ export async function authenticateWithEmail(mode: AuthMode, email: string, passw
   return callSupabaseAuth("token?grant_type=password", { email, password });
 }
 
+export async function sendPasswordResetEmail(email: string, redirectTo: string) {
+  return callSupabaseAuth("recover", {
+    email,
+    redirect_to: redirectTo
+  });
+}
+
+export async function updateSupabasePassword(accessToken: string, password: string) {
+  const { url, anonKey } = getSupabaseConfig();
+  const response = await fetch(`${url}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password })
+  });
+
+  const data = (await response.json()) as SupabaseAuthResponse;
+  if (!response.ok) {
+    throw new Error(data.message || data.msg || data.error_description || data.error || "Mise à jour du mot de passe impossible.");
+  }
+
+  return data;
+}
+
 export async function getSupabaseUser(accessToken?: string): Promise<AuthUser | null> {
   if (!accessToken) return null;
 
