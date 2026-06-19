@@ -222,43 +222,34 @@ export function buildShapeSummary(
   const status = score >= 7 ? "Tu peux avancer, tranquillement." : score >= 5 ? "On ajuste sans forcer." : "Aujourd'hui, on protège la régularité.";
 
   const signals = [
-    sleepConcern ? "ton sommeil semble à ménager" : "ton sommeil semble correct",
-    stressConcern ? "le stress est haut" : "ton stress reste gérable",
-    loadConcern ? "ton énergie invite à garder de la marge" : "ton énergie permet d'avancer",
+    sleepConcern ? "sommeil à ménager" : "",
+    stressConcern ? "stress haut" : "",
+    loadConcern ? "énergie basse ou charge élevée" : "",
     painConcern ? "une douleur mérite de rester prudente" : ""
   ].filter(Boolean);
-  const hasRecentTraining = history.length > 0;
   const daysSinceLastTraining = getDaysSinceLastTraining(history);
-  const encouragement =
-    readiness.motivation >= 7
-       ? "Ta motivation est bonne, donc on l'utilise intelligemment sans partir en mode héros de film dès l'échauffement."
-      : "La motivation n'a pas besoin d'être parfaite: aujourd'hui, on vise surtout une action simple qui relance la machine.";
   const historyMessage =
     daysSinceLastTraining !== null
        ? daysSinceLastTraining === 0
-         ? "Tu as une séance mémorisée très récente: le programme garde donc de la marge pour éviter d'empiler de la fatigue."
+         ? "séance très récente"
         : daysSinceLastTraining >= 5
-           ? "Cela fait plusieurs jours sans séance mémorisée: reprise douce conseillée, histoire de réveiller le corps sans lui envoyer une facture."
-          : "Ta dernière séance mémorisée est assez récente: on peut avancer, mais avec une progression propre."
-      : hasRecentTraining
-         ? "Tes dernières séances mémorisées montrent que tu es déjà dans une dynamique. On garde donc une progression cohérente plutôt qu'un grand coup d'éclat."
-        : "Comme aucune séance récente n'est mémorisée, une reprise douce est probablement plus rentable qu'un entraînement brutal.";
-  const practicalExample =
-    qvt.sedentaryRisk
-       ? "Exemple: une marche de 20 minutes aujourd'hui serait déjà bénéfique, sans transformer ta journée en stage commando."
-      : qvt.mentalLoad
-         ? "Exemple: deux séances simples et réalistes valent mieux qu'un programme parfait qui finit dans le tiroir."
-        : sleepConcern && readiness.motivation >= 6
-           ? "Exemple: une séance facile de 40 à 45 min te ferait probablement plus progresser qu'un entraînement intense aujourd'hui."
-          : "Exemple: une séance propre, terminée avec de la marge, vaut mieux qu'une séance spectaculaire qui te grille deux jours.";
-  const qvtMessage = qvt.signals.length
-     ? ` Côté QVT, je note ${qvt.signals.join(", ")}: on cherche une action faisable dans ton quotidien avant de chercher l'entraînement parfait.`
-    : "";
-  const quote = `Citation du jour: "La régularité gagne souvent contre l'intensité quand l'intensité oublie de dormir."`;
+           ? "plusieurs jours sans séance"
+          : ""
+      : "pas encore d'historique récent";
+  const qvtSignal = qvt.mentalLoad
+    ? "charge mentale à alléger"
+    : qvt.sedentaryRisk
+      ? "activité récente faible"
+      : "";
+  const markedSignals = [...signals, historyMessage, qvtSignal].filter(Boolean).slice(0, 4);
+  const signalText = markedSignals.length ? markedSignals.join(", ") : "les voyants principaux sont corrects";
+  const direction = sleepConcern || stressConcern || loadConcern || painConcern
+    ? "On garde une marge, mais le contenu reste relié à ton objectif."
+    : "On peut viser une séance utile, sans surcharger.";
 
   return {
     status,
-    explanation: `${signals.join(" et ")}. ${encouragement} ${historyMessage}${qvtMessage} Pour ton objectif ${goal.toLowerCase()}, le programme privilégie ${priority.toLowerCase()} sans ajouter trop de fatigue. ${practicalExample} ${quote}`
+    explanation: `Points marquants: ${signalText}. Objectif: ${goal.toLowerCase()}. Priorité: ${priority.toLowerCase()}. ${direction}`
   };
 }
 
@@ -352,6 +343,10 @@ function shouldBeEasy(readiness: Readiness, garmin: GarminMockData) {
   );
 }
 
+function isPerformanceGoal(goal: string) {
+  return has(goal, ["gagner", "course", "swimrun", "swim run", "trail", "10 km", "semi", "marathon", "objectif"]);
+}
+
 function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness, garmin: GarminMockData, profile: UserProfile) {
   const note = `${day.note} ${form.globalNotes}`.toLowerCase();
   const goalText = getGoal(profile).toLowerCase();
@@ -361,26 +356,27 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
   const duration = durationFromNote(day.note || form.globalNotes, form.duration, readiness, garmin);
   const confirmed = profile.level === "confirmé";
   const beginner = profile.level === "débutant" || profile.level === "reprise";
+  const performanceGoal = isPerformanceGoal(goalText);
 
-  if (qvt.sedentaryRisk && !has(note, ["trail", "fractionn", "renfo", "courir", "footing", "velo", "vélo", "natation"])) {
+  if (qvt.sedentaryRisk && !performanceGoal && !has(note, ["trail", "fractionn", "renfo", "courir", "footing", "velo", "vélo", "natation"])) {
     return {
       type: "marche active + mobilité",
       duration: "20 min",
       intensity: "facile",
       content: "Marche accessible, mobilité douce et respiration. Objectif: remettre du mouvement sans pression.",
-      detailedContent: "12 min de marche confortable\n3 min de mobilité épaules/dos\n3 min de mobilité hanches/mollets\n2 min de respiration calme\nSi tu te sens bien, ajoute 5 min de marche.",
+      detailedContent: "Marche confortable: 12 min\nMobilité épaules/dos: 3 min\nMobilité hanches/mollets: 3 min\nRespiration calme: 2 min\nRécupération: stop si la fatigue monte",
       objective: "lutter contre la sédentarité avec une action simple et réaliste.",
       reason: "tu sembles avoir peu bougé récemment; une courte marche est déjà bénéfique et plus durable qu'une séance ambitieuse mal placée."
     };
   }
 
-  if (qvt.mentalLoad && !has(note, ["longue", "intense", "fractionn", "trail"])) {
+  if (qvt.mentalLoad && !performanceGoal && !has(note, ["longue", "intense", "fractionn", "trail"])) {
     return {
       type: "séance courte anti-charge mentale",
       duration: "25 min",
       intensity: "facile",
       content: "Format court: marche rapide ou footing très doux, puis 6 minutes de mobilité. Simple, faisable, sans charge mentale ajoutée.",
-      detailedContent: "5 min très faciles\n14 min marche rapide ou footing très doux\n2 x 30 sec gainage doux\n2 x 8 squats lents\n4 min mobilité dos/hanches\nFinir avec la sensation d'en avoir gardé sous le pied.",
+      detailedContent: "Échauffement très facile: 5 min\nMarche rapide ou footing doux: 14 min\nGainage doux: 2 x 30 sec\nSquats lents: 2 x 8\nMobilité dos/hanches: 4 min\nRécupération: finir avec de la marge",
       objective: "préserver la régularité pendant une période chargée.",
       reason: "les contraintes de vie indiquent une charge mentale élevée; le coach réduit volontairement l'ambition pour proposer une séance tenable."
     };
@@ -392,9 +388,24 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       duration: "20 min",
       intensity: "facile",
       content: "Marche douce, mobilité légère et respiration. Aucune séance structurée.",
-      detailedContent: "10 min de marche très douce\n5 min de mobilité hanches/dos\n5 min de respiration calme\nSi une douleur augmente, tu arrêtes.",
+      detailedContent: "Marche très douce: 10 min\nMobilité hanches/dos: 5 min\nRespiration calme: 5 min\nRécupération: arrêt si une douleur augmente",
       objective: "respecter une contrainte de repos tout en gardant un minimum de mouvement.",
       reason: "tu as indiqué une contrainte de repos, donc le coach protège la récupération."
+    };
+  }
+
+  if (has(goalText, ["swimrun", "swim run", "nage", "natation"])) {
+    const swimRunIntensity = easy || painful || beginner ? "modérée" : confirmed ? "intense" : "modérée";
+
+    return {
+      type: "enchaînement swimrun spécifique",
+      duration,
+      intensity: swimRunIntensity,
+      content: "Séance orientée swimrun: aisance course, renfo utile au haut du corps et transitions courtes. Si pas d'accès piscine, remplace la nage par tirage élastique.",
+      detailedContent:
+        "Échauffement course très facile: 8 min\nCourse aisance respiratoire: 3 x 8 min\nRécupération entre blocs course: 2 min marche\nTirage élastique ou nage facile: 3 x 4 min\nRécupération entre blocs nage/tirage: 1 min\nGainage ventral: 3 x 30 sec\nRetour au calme: 5 min très faciles",
+      objective: "progresser vers ton objectif swimrun sans perdre le lien entre course, nage et transitions.",
+      reason: "l'objectif déclaré est spécifique; même en restant prudent, la séance garde un contenu utile pour le swimrun."
     };
   }
 
@@ -412,8 +423,8 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
           : "Parcours vallonné en aisance, montées régulières sans se mettre dans le rouge, descentes prudentes et fin très facile.",
       detailedContent:
         adjustedIntensity === "intense"
-           ? "12 min très faciles\n5 x 3 min en montée à effort soutenu\n2 min de récupération en redescendant ou en marchant entre chaque bloc\n8 min faciles pour finir\nEn descente, priorité à la technique, pas à la vitesse."
-          : "10 min faciles\n30 à 40 min sur terrain vallonné en restant capable de parler\nMarche autorisée dans les montées raides\n5 à 8 min très faciles pour finir.",
+           ? "Échauffement très facile: 12 min\nMontée soutenue: 5 x 3 min\nRécupération: 2 min en descente ou marche entre les blocs\nRetour au calme: 8 min faciles\nDescente: priorité technique, pas vitesse"
+          : "Échauffement facile: 10 min\nTerrain vallonné en aisance: 30 à 40 min\nMontées raides: marche autorisée\nRetour au calme: 5 à 8 min très faciles",
       objective: "respecter ton envie de trail tout en gardant une charge maîtrisée.",
       reason:
         requestedIntense && adjustedIntensity !== "intense"
@@ -428,7 +439,7 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       duration,
       intensity: "facile",
       content: "Mobilité hanches/mollets, gainage court, squats très contrôlés et marche si tout est confortable.",
-      detailedContent: "2 tours tranquilles\n8 squats lents\n8 fentes arrière par jambe\n20 sec de gainage\n10 ponts fessiers\n45 sec de récupération entre les exercices\n5 min de mobilité pour finir.",
+      detailedContent: "Circuit tranquille: 2 tours\nSquats lents: 8 reps\nFentes arrière: 8 reps par jambe\nGainage: 20 sec\nPonts fessiers: 10 reps\nRécupération: 45 sec entre exercices\nMobilité finale: 5 min",
       objective: "rester régulier sans augmenter l'impact.",
       reason: "les douleurs signalées invitent à limiter la course et à privilégier un travail contrôlé."
     };
@@ -441,8 +452,8 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       intensity: easy || beginner ? "facile" : confirmed ? "intense" : "modérée",
       content: `Échauffement 6 min, puis 3 blocs avec ${getEquipment(profile)}: poussée, tirage si possible, jambes contrôlées, gainage. Finir avec 4 min de mobilité.`,
       detailedContent: has(note, ["haut du corps"])
-         ? `${confirmed ? "Échauffement 8 min" : "Échauffement 6 min"}\n${confirmed ? "5" : "4"} séries de 10 à 15 pompes inclinées\n${confirmed ? "5" : "4"} séries de 12 tirages avec ${getEquipment(profile)} si possible\n${confirmed ? "5 x 40 sec" : "4 x 30 sec"} de gainage\n${confirmed ? "45 sec" : "60 sec"} de récupération entre les exercices\nMobilité épaules/dos pour finir.`
-        : `${confirmed ? "Échauffement 8 min" : "Échauffement 6 min"}\n${confirmed ? "5" : "4"} séries de 15 à 20 squats lents\n${confirmed ? "5" : "4"} séries de 10 fentes arrière par jambe\n${confirmed ? "5" : "4"} séries de 12 ponts fessiers\n${confirmed ? "5 x 40 sec" : "4 x 30 sec"} de gainage\n${confirmed ? "45 sec" : "60 sec"} de récupération entre les exercices\nSi tu as ${getEquipment(profile)}, ajoute-le seulement si le geste reste propre.`,
+         ? `Échauffement: ${confirmed ? "8" : "6"} min\nPompes inclinées: ${confirmed ? "5" : "4"} x 10 à 15\nTirages avec ${getEquipment(profile)}: ${confirmed ? "5" : "4"} x 12\nGainage: ${confirmed ? "5 x 40 sec" : "4 x 30 sec"}\nRécupération: ${confirmed ? "45 sec" : "60 sec"} entre exercices\nMobilité épaules/dos: 4 min`
+        : `Échauffement: ${confirmed ? "8" : "6"} min\nSquats lents: ${confirmed ? "5" : "4"} x 15 à 20\nFentes arrière: ${confirmed ? "5" : "4"} x 10 par jambe\nPonts fessiers: ${confirmed ? "5" : "4"} x 12\nGainage: ${confirmed ? "5 x 40 sec" : "4 x 30 sec"}\nRécupération: ${confirmed ? "45 sec" : "60 sec"} entre exercices`,
       objective: "Équilibrer course et renforcement sans ajouter trop d'impact.",
       reason: has(note, ["haut du corps", "renfo"])
          ? "respecte ta demande précise et garde une charge maîtrisée."
@@ -456,7 +467,7 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       duration,
       intensity: easy ? "facile" : "modérée",
       content: "Course en aisance respiratoire, terrain simple, sans accélération. Si la forme baisse, alterner 8 min course / 2 min marche.",
-      detailedContent: "10 min très faciles\nCourse continue en aisance respiratoire\nSi la respiration monte trop : 8 min course / 2 min marche\n5 min lentes pour finir.",
+      detailedContent: "Échauffement très facile: 10 min\nCourse continue en aisance: bloc principal\nOption fatigue: 8 min course / 2 min marche\nRetour au calme: 5 min lentes\nRécupération: hydratation et marche 3 min",
       objective: "développer l'endurance sans courir après la performance.",
       reason: "respecte ton envie de sortie longue tout en gardant une intensité compatible avec ton état actuel."
     };
@@ -469,8 +480,8 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
       intensity: easy || beginner ? "facile" : confirmed ? "intense" : "modérée",
       content: "8 min d'échauffement, course régulière en aisance, puis 5 min très faciles. Rester capable de parler tout du long.",
       detailedContent: has(note, ["fractionné"])
-         ? `${confirmed ? "15" : "12"} min d'échauffement facile\n${confirmed ? "10" : "8"} x 1 min rapide mais contrôlée\n1 min très facile entre chaque répétition\n8 min faciles pour finir.`
-        : "8 à 10 min d'échauffement\nCourse régulière en aisance respiratoire\n5 min très faciles pour finir\nÉtirements légers si besoin.",
+         ? `Échauffement facile: ${confirmed ? "15" : "12"} min\nRépétitions rapides contrôlées: ${confirmed ? "10" : "8"} x 1 min\nRécupération: 1 min très facile entre répétitions\nRetour au calme: 8 min faciles`
+        : "Échauffement: 8 à 10 min\nCourse régulière en aisance: bloc principal\nRetour au calme: 5 min très faciles\nRécupération: étirements légers si besoin",
       objective: "construire une base solide et répétable.",
       reason: has(note, ["plat", "courir"])
          ? "respecte ta demande utilisateur et évite une surcharge car les signaux de récupération sont pris en compte."
@@ -486,8 +497,8 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
        ? "Marche rapide ou course très douce, puis 8 min de gainage et mobilité."
       : "Course facile, 4 lignes droites relâchées, puis mobilité courte.",
     detailedContent: easy
-       ? "20 min de marche rapide ou course très douce\n2 tours de 20 sec de gainage\n2 tours de 8 squats lents\n2 tours de 8 ponts fessiers\nMobilité dos/hanches pour finir."
-      : "10 min faciles\n20 à 30 min de course calme\n4 lignes droites de 15 sec relâchées\nRécupération complète entre chaque ligne droite.",
+       ? "Marche rapide ou course douce: 20 min\nGainage: 2 x 20 sec\nSquats lents: 2 x 8\nPonts fessiers: 2 x 8\nMobilité dos/hanches: 4 min\nRécupération: garder une marge nette"
+      : "Échauffement facile: 10 min\nCourse calme: 20 à 30 min\nLignes droites relâchées: 4 x 15 sec\nRécupération: complète entre chaque ligne droite",
     objective: "installer la régularité sans pression.",
     reason: "choix équilibré entre objectif, forme du jour, charge récente et contraintes disponibles."
   };
@@ -513,14 +524,15 @@ export function generateProgram(
   let previousWasLong = false;
 
   return selectedDays.map((day, index) => {
-    const overRealisticLimit = qvt.recommendedSessionCount !== null && index >= qvt.recommendedSessionCount;
+    const performanceGoal = isPerformanceGoal(getGoal(profile));
+    const overRealisticLimit = !performanceGoal && qvt.recommendedSessionCount !== null && index >= qvt.recommendedSessionCount;
     const session = overRealisticLimit
        ? {
           type: "récupération active accessible",
           duration: "15 min",
           intensity: "facile",
           content: "Marche douce, mobilité ou étirements. L'objectif est de garder le lien avec le mouvement sans ajouter une vraie séance.",
-          detailedContent: "8 min de marche douce\n3 min mobilité dos/épaules\n3 min mobilité hanches/mollets\n1 min respiration calme\nStop si cela ajoute de la fatigue.",
+          detailedContent: "Marche douce: 8 min\nMobilité dos/épaules: 3 min\nMobilité hanches/mollets: 3 min\nRespiration calme: 1 min\nRécupération: stop si cela ajoute de la fatigue",
           objective: "maintenir la régularité sans augmenter la charge mentale.",
           reason: "la période semble chargée ou peu active récemment; le programme réduit volontairement le nombre de vraies séances pour rester réaliste."
         }

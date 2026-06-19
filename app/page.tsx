@@ -12,7 +12,6 @@ import {
   Sparkles,
   Zap,
   Brain,
-  Coffee,
   Leaf,
   ChevronDown,
   ChevronUp
@@ -285,6 +284,10 @@ export default function Home() {
   const coachHistory = useMemo(() => [...history, ...stravaHistory], [history, stravaHistory]);
   const localSummary = useMemo(() => buildShapeSummary(readiness, garminData, profile, form.priority, coachHistory), [readiness, garminData, profile, form.priority, coachHistory]);
   const userMemory = useMemo(() => buildUserMemory(coachHistory, profile), [coachHistory, profile]);
+  const displayedHistory = useMemo(
+    () => [...coachHistory].sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0)),
+    [coachHistory]
+  );
   const activeSummary = summary ?? localSummary;
   const selectedDayCount = form.plannedDays.filter((day) => day.selected).length;
   const visibleProgram = useMemo(
@@ -295,6 +298,20 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("auto-coach-memory", JSON.stringify(userMemory));
   }, [userMemory]);
+
+  useEffect(() => {
+    if (!hasLoadedLocalData) return;
+
+    fetch("/api/strava/sync")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok && Array.isArray(result.activities)) {
+          setStravaActivities(result.activities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.activities));
+        }
+      })
+      .catch(() => undefined);
+  }, [hasLoadedLocalData]);
 
   const saveCloudPatch = useCallback(async (data: Record<string, unknown>, successMessage = "Données sauvegardées sur ton compte.") => {
     if (!hasCheckedCloudData) return false;
@@ -383,7 +400,7 @@ export default function Home() {
       const nextProgram = result.program?.length ? result.program : fallbackProgram;
       setProgram(nextProgram);
       setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, nextProgram));
-      setSummary(result.summary ?? localSummary);
+      setSummary(localSummary);
       await saveCloudPatch({
         readiness,
         garminData,
@@ -391,11 +408,7 @@ export default function Home() {
         currentProgram: nextProgram,
         memory: userMemory
       }, "Programme sauvegardé sur ton compte.");
-      setCoachReply(
-        result.source === "openai"
-           ? "Programme généré avec l’IA connectée. J’ai gardé un ton prudent et humain."
-          : "Programme généré en mode simulation intelligente. Tu peux déjà tester la logique avant OpenAI."
-      );
+      setCoachReply("");
     } catch {
       setProgram(fallbackProgram);
       setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, fallbackProgram));
@@ -407,7 +420,7 @@ export default function Home() {
         currentProgram: fallbackProgram,
         memory: userMemory
       }, "Programme sauvegardé sur ton compte.");
-      setCoachReply("Le mode simulation a pris le relais. Le programme reste adapté aux données saisies.");
+      setCoachReply("");
     } finally {
       setIsGenerating(false);
     }
@@ -455,7 +468,7 @@ export default function Home() {
               type: "renfo complémentaire maison",
               intensity: "facile",
               content: "Séance de renforcement simple pour remplacer la course sans perdre le fil.",
-              detailedContent: "Échauffement 5 min\n3 séries de 15 squats lents\n3 séries de 10 fentes arrière par jambe\n3 x 30 sec de gainage\n3 séries de 12 ponts fessiers\n60 sec de récupération entre les exercices.",
+              detailedContent: "Échauffement: 5 min\nSquats lents: 3 x 15\nFentes arrière: 3 x 10 par jambe\nGainage: 3 x 30 sec\nPonts fessiers: 3 x 12\nRécupération: 60 sec entre exercices",
               objective: "garder la régularité tout en réduisant l’impact.",
               reason: "variante proposée pour respecter les contraintes du jour sans répéter la même séance."
             }
@@ -463,7 +476,7 @@ export default function Home() {
               type: "footing facile alternatif",
               intensity: "facile",
               content: "Course douce et régulière, pensée comme une alternative simple à la séance prévue.",
-              detailedContent: "8 min d’échauffement très facile\n20 à 30 min en aisance respiratoire\n5 min très faciles pour finir\nSi fatigue : alterner 4 min course / 1 min marche.",
+              detailedContent: "Échauffement très facile: 8 min\nCourse en aisance respiratoire: 20 à 30 min\nRetour au calme: 5 min très faciles\nOption fatigue: 4 min course / 1 min marche\nRécupération: marche 3 min",
               objective: "entretenir la régularité sans surcharge.",
               reason: "variante proposée pour offrir une option différente tout en gardant l’objectif du jour."
             };
@@ -632,19 +645,6 @@ export default function Home() {
         <p className="mb-2 text-sm text-moss">Synthèse de forme</p>
         <h2 className="text-xl font-medium text-night">{activeSummary.status}</h2>
         <p className="mt-3 text-sm leading-6 text-mist/75">{activeSummary.explanation}</p>
-        <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm leading-6 text-mist/75">{coachReply}</p>
-      </section>
-
-      <section className="mb-4 rounded-[28px] border border-night/10 bg-white/75 p-5 shadow-soft">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-ember/15 text-ember">
-            <Coffee className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="mb-1 text-sm font-medium text-night">Ce que ton coach retient</p>
-            <p className="text-sm leading-6 text-mist/80">{userMemory.insight}</p>
-          </div>
-        </div>
       </section>
 
       <section className="mb-4 overflow-hidden rounded-[30px] border border-moss/25 bg-gradient-to-br from-white to-ink-950 p-5 shadow-soft">
@@ -745,8 +745,8 @@ export default function Home() {
 
                 {expandedSessionIds.includes(session.id) && (
                   <div className="mt-3 space-y-2 rounded-2xl bg-white/70 p-4 text-sm leading-6 text-mist/80">
-                    {session.detailedContent.split("\n").map((line) => (
-                      <p key={line}>{line}</p>
+                    {session.detailedContent.split("\n").filter(Boolean).map((line) => (
+                      <p key={line} className="border-b border-night/5 pb-2 last:border-b-0 last:pb-0">{line}</p>
                     ))}
                   </div>
                 )}
@@ -764,22 +764,16 @@ export default function Home() {
               </article>
             ))}
           </div>
-          {globalAdvice && (
-            <div className="mt-4 rounded-3xl border border-ember/20 bg-ember/10 p-4">
-              <p className="text-sm font-semibold text-ember">{globalAdvice.title}</p>
-              <p className="mt-2 text-sm leading-6 text-mist/80">{globalAdvice.body}</p>
-            </div>
-          )}
         </section>
       )}
 
       <section className="mb-5 rounded-[28px] border border-night/10 bg-white/80 p-5">
         <h2 className="mb-3 text-lg font-medium text-night">Historique local</h2>
-        {history.length === 0 ? (
-          <p className="text-sm leading-6 text-mist/60">Les programmes validés apparaîtront ici, uniquement sur cet appareil.</p>
+        {displayedHistory.length === 0 ? (
+          <p className="text-sm leading-6 text-mist/60">Les séances mémorisées et Strava apparaîtront ici.</p>
         ) : (
           <div className="space-y-3">
-            {history.map((entry) => (
+            {displayedHistory.map((entry) => (
               <article key={entry.id} className="rounded-2xl bg-white/65 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -788,9 +782,11 @@ export default function Home() {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xs text-mist/45">{entry.date}</p>
-                    <button onClick={() => deleteHistoryEntry(entry.id)} className="mt-3 rounded-full border border-night/10 px-3 py-1 text-xs text-mist/60">
-                      Supprimer
-                    </button>
+                    {!entry.id.startsWith("strava-") && (
+                      <button onClick={() => deleteHistoryEntry(entry.id)} className="mt-3 rounded-full border border-night/10 px-3 py-1 text-xs text-mist/60">
+                        Supprimer
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>
