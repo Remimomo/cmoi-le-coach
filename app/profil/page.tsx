@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   levelOptions,
   type UserProfile
@@ -50,10 +50,33 @@ export default function ProfilePage() {
   const [hasCheckedCloudProfile, setHasCheckedCloudProfile] = useState(false);
   const [hasEditedProfile, setHasEditedProfile] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Sauvegarde locale active.");
+  const hasEditedProfileRef = useRef(false);
 
   function updateProfile(field: keyof UserProfile, value: string) {
     setHasEditedProfile(true);
-    setProfile((current) => ({ ...current, [field]: value }));
+    hasEditedProfileRef.current = true;
+    setProfile((current) => {
+      const nextProfile = { ...current, [field]: value };
+      window.localStorage.setItem("auto-coach-profile", JSON.stringify(nextProfile));
+
+      if (hasCheckedCloudProfile) {
+        fetch("/api/user-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile: nextProfile })
+        })
+          .then((response) => {
+            if (response.ok) {
+              setHasEditedProfile(false);
+              hasEditedProfileRef.current = false;
+              setSyncStatus("Profil sauvegardé sur ton compte.");
+            }
+          })
+          .catch(() => setSyncStatus("Sauvegarde locale active. La synchronisation reprendra plus tard."));
+      }
+
+      return nextProfile;
+    });
   }
 
   useEffect(() => {
@@ -70,11 +93,13 @@ export default function ProfilePage() {
     fetch("/api/user-data")
       .then((response) => response.json())
       .then((result) => {
+        if (hasEditedProfileRef.current) return;
         if (result.ok && result.data.profile && hasProfileValue(result.data.profile)) {
           const cloudProfile = normalizeProfile(mergeProfileWithoutEmpty(initialProfile, result.data.profile));
           setProfile(cloudProfile);
           window.localStorage.setItem("auto-coach-profile", JSON.stringify(cloudProfile));
           setHasEditedProfile(false);
+          hasEditedProfileRef.current = false;
           setSyncStatus("Profil synchronisé avec ton compte.");
         } else {
           setSyncStatus("Profil prêt à être sauvegardé sur ton compte.");
@@ -100,6 +125,7 @@ export default function ProfilePage() {
         .then((response) => {
           if (response.ok) {
             setHasEditedProfile(false);
+            hasEditedProfileRef.current = false;
             setSyncStatus("Profil sauvegardé sur ton compte.");
           }
         })

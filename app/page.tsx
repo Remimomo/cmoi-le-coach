@@ -175,7 +175,7 @@ export default function Home() {
     coachMessage("Je suis là pour parler sport, forme, récup, motivation et alimentation simple.")
   ]);
   const [stravaActivities, setStravaActivities] = useState<StravaActivitySummary[]>([]);
-  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasLoadedLocalData, setHasLoadedLocalData] = useState(false);
   const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
@@ -335,6 +335,7 @@ export default function Home() {
 
   function updateReadiness(key: keyof Readiness, value: string | number) {
     setHasEditedReadiness(true);
+    setSummary(null);
     setReadiness((current) => ({ ...current, [key]: value }));
   }
 
