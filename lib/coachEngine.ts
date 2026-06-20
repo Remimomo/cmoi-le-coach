@@ -27,6 +27,11 @@ export type ProgramForm = {
 
 export type UserProfile = {
   firstName: string;
+  birthDate: string;
+  sex: string;
+  cycleLastPeriodStart: string;
+  cycleAverageLength: string;
+  cyclePeriodLength: string;
   goal: string;
   customGoal: string;
   level: string;
@@ -67,6 +72,14 @@ export type QvtAnalysis = {
   daysSinceLastTraining: number | null;
   recommendedSessionCount: number | null;
   signals: string[];
+};
+
+export type CycleContext = {
+  cycleDay: number;
+  phase: "règles" | "folliculaire" | "ovulation" | "lutéale";
+  softSuggestion: boolean;
+  summaryHint: string;
+  programHint: string;
 };
 
 export type HistoryEntry = {
@@ -273,6 +286,59 @@ function getFavoriteSports(profile: UserProfile) {
   return profile.favoriteSports?.toLowerCase() ?? "";
 }
 
+export function getAge(profile: UserProfile) {
+  if (!profile.birthDate) return null;
+  const birthDate = new Date(profile.birthDate);
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age -= 1;
+
+  return age >= 0 && age <= 120 ? age : null;
+}
+
+function numberFromProfile(value: string, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function getCycleContext(profile: UserProfile): CycleContext | null {
+  if (profile.sex !== "femme" || !profile.cycleLastPeriodStart) return null;
+
+  const lastPeriodStart = new Date(profile.cycleLastPeriodStart);
+  if (Number.isNaN(lastPeriodStart.getTime())) return null;
+
+  const cycleLength = Math.min(45, Math.max(21, numberFromProfile(profile.cycleAverageLength, 28)));
+  const periodLength = Math.min(10, Math.max(2, numberFromProfile(profile.cyclePeriodLength, 5)));
+  const elapsedDays = Math.floor((Date.now() - lastPeriodStart.getTime()) / (1000 * 60 * 60 * 24));
+  if (elapsedDays < 0) return null;
+
+  const cycleDay = (elapsedDays % cycleLength) + 1;
+  const phase =
+    cycleDay <= periodLength
+      ? "règles"
+      : cycleDay <= Math.max(periodLength + 1, 13)
+        ? "folliculaire"
+        : cycleDay <= 16
+          ? "ovulation"
+          : "lutéale";
+  const softSuggestion = phase === "règles" || (phase === "lutéale" && cycleDay >= cycleLength - 4);
+
+  return {
+    cycleDay,
+    phase,
+    softSuggestion,
+    summaryHint: softSuggestion
+      ? "cycle actuel: privilégier une adaptation souple selon les sensations"
+      : "cycle actuel pris en compte",
+    programHint: softSuggestion
+      ? " Compte tenu de la période actuelle du cycle et de ton ressenti, le programme garde une marge et reste entièrement adaptable."
+      : " J'ai tenu compte de la période actuelle de ton cycle dans la construction du programme."
+  };
+}
+
 export function createNextTenDays() {
   const formatter = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "short" });
   const shortFormatter = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric" });
@@ -327,6 +393,8 @@ export function buildShapeSummary(
   const qvt = analyzeQvtContext(readiness, garmin, profile, history);
   const recentActivity = getRecentActivityContext(history);
   const feedback = getFeedbackContext(history);
+  const cycle = getCycleContext(profile);
+  const age = getAge(profile);
   const goal = getGoal(profile);
   const sleepConcern = readiness.sleep <= 5;
   const stressConcern = readiness.stress >= 7;
@@ -338,7 +406,9 @@ export function buildShapeSummary(
     sleepConcern ? "sommeil à ménager" : "",
     stressConcern ? "stress haut" : "",
     loadConcern ? "énergie basse ou charge élevée" : "",
-    painConcern ? "une douleur mérite de rester prudente" : ""
+    painConcern ? "une douleur mérite de rester prudente" : "",
+    cycle ? cycle.summaryHint : "",
+    age !== null ? `âge pris en compte: ${age} ans` : ""
   ].filter(Boolean);
   const daysSinceLastTraining = getDaysSinceLastTraining(history);
   const historyMessage =
@@ -362,7 +432,7 @@ export function buildShapeSummary(
   const feedbackSignal = feedback.count >= 2
     ? feedback.durationHint || `Pertinence moyenne récente: ${feedback.average}/100`
     : "";
-  const markedSignals = [...signals, historyMessage, stravaSignal, feedbackSignal, qvtSignal].filter(Boolean).slice(0, 4);
+  const markedSignals = [...signals, historyMessage, stravaSignal, feedbackSignal, qvtSignal].filter(Boolean).slice(0, 5);
   const signalText = markedSignals.length ? markedSignals.join(", ") : "les voyants principaux sont corrects";
   const direction = sleepConcern || stressConcern || loadConcern || painConcern
     ? "On garde une marge, mais le contenu reste relié à ton objectif."
@@ -474,9 +544,11 @@ function formatDurationFromMinutes(minutes: number) {
 function adjustDurationForLevel(duration: string, profile: UserProfile, easy: boolean, painful: boolean) {
   const minutes = durationMinutes(duration);
   if (!minutes) return duration;
+  const age = getAge(profile);
 
   if (profile.level === "confirmé" && !easy && !painful) {
-    return formatDurationFromMinutes(Math.min(75, Math.max(minutes + 15, 50)));
+    const upperLimit = age !== null && age >= 55 ? 65 : 75;
+    return formatDurationFromMinutes(Math.min(upperLimit, Math.max(minutes + 15, 50)));
   }
 
   if ((profile.level === "débutant" || profile.level === "reprise") && minutes > 40) {
@@ -506,7 +578,9 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
   const favoriteSports = getFavoriteSports(profile);
   const preferenceText = `${note} ${goalText} ${favoriteSports}`;
   const qvt = analyzeQvtContext(readiness, garmin, profile, history, form);
-  const easy = shouldBeEasy(readiness, garmin);
+  const cycle = getCycleContext(profile);
+  const cycleSoftMode = Boolean(cycle?.softSuggestion && (readiness.energy <= 6 || readiness.stress >= 6 || readiness.pain >= 4));
+  const easy = shouldBeEasy(readiness, garmin) || cycleSoftMode;
   const painful = readiness.pain >= 6 || garmin.painNotes.toLowerCase().includes("genou");
   const duration = adjustDurationForLevel(durationFromNote(day.note || form.globalNotes, form.duration, readiness, garmin), profile, easy, painful);
   const confirmed = profile.level === "confirmé";
@@ -698,6 +772,8 @@ export function generateProgram(
   const qvt = analyzeQvtContext(readiness, garmin, profile, history, form);
   const recentActivity = getRecentActivityContext(history);
   const feedback = getFeedbackContext(history);
+  const cycle = getCycleContext(profile);
+  const age = getAge(profile);
   const recentProgramCount = history.filter((entry) => entry.program?.length).length;
   const levelHint =
     profile.level === "confirmé"
@@ -705,6 +781,8 @@ export function generateProgram(
       : profile.level === "débutant" || profile.level === "reprise"
          ? " Ton niveau invite à garder une marge confortable pour construire sans brûler les étapes."
         : " Ton niveau intermédiaire permet de progresser sans chercher l'intensité maximale à chaque séance.";
+  const ageHint = age !== null ? ` Ton âge (${age} ans) est intégré pour doser progressivement la charge.` : "";
+  const cycleHint = cycle?.programHint ?? "";
   let previousWasHard = false;
   let previousWasLong = false;
 
@@ -727,6 +805,7 @@ export function generateProgram(
       previousWasHard ||
       previousWasLong ||
       (index === 0 && recentActivity.heavyRecentActivity) ||
+      (index === 0 && cycle?.softSuggestion && isHard) ||
       (index === 0 && feedback.average !== null && feedback.average > 65);
     const coordinatedSession =
       shouldSoften && isHard
@@ -763,7 +842,7 @@ export function generateProgram(
       day: day.dayName,
       dateLabel: day.dateLabel,
       ...coordinatedSession,
-      reason: `${coordinatedSession.reason}${sequenceHint}${recentHint}${levelHint}${feedbackHint ? ` ${feedbackHint}` : ""}`
+      reason: `${coordinatedSession.reason}${sequenceHint}${recentHint}${levelHint}${ageHint}${cycleHint}${feedbackHint ? ` ${feedbackHint}` : ""}`
     };
   });
 }
@@ -779,6 +858,8 @@ export function buildGlobalAdvice(
   const offDays = form.plannedDays.filter((day) => !day.selected);
   const easy = shouldBeEasy(readiness, garmin);
   const qvt = analyzeQvtContext(readiness, garmin, profile, [], form);
+  const cycle = getCycleContext(profile);
+  const age = getAge(profile);
   const hasRenfo = program.some((session) => session.type.toLowerCase().includes("renfo") || session.content.toLowerCase().includes("gainage"));
   const nextOffDay = offDays[0].shortLabel;
   const goal = getGoal(profile);
@@ -789,6 +870,13 @@ export function buildGlobalAdvice(
       body: nextOffDay
          ? `Vu les signaux de fatigue, garde ${nextOffDay} comme vrai jour de récupération. Si tu te sens mieux, ajoute seulement 10 min de mobilité ou de gainage facile.`
         : "Vu les signaux de fatigue, évite d'ajouter une séance. Le meilleur choix est de garder de la marge et de privilégier la récupération."
+    };
+  }
+
+  if (cycle?.softSuggestion) {
+    return {
+      title: "Conseil global",
+      body: "Compte tenu de la période actuelle et de ton ressenti, garde une marge sur les intensités. Le programme proposé reste entièrement adaptable à tes sensations."
     };
   }
 
@@ -824,6 +912,6 @@ export function buildGlobalAdvice(
 
   return {
     title: "Conseil global",
-    body: `Le programme est cohérent avec ton objectif ${goal}. Garde une intensité confortable sur les premières séances et ajuste seulement si les sensations restent bonnes.`
+    body: `Le programme est cohérent avec ton objectif ${goal}. ${age !== null ? `Ton âge (${age} ans) est intégré pour doser la progression. ` : ""}Garde une intensité confortable sur les premières séances et ajuste seulement si les sensations restent bonnes.`
   };
 }

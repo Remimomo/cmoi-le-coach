@@ -39,6 +39,11 @@ const initialReadiness: Readiness = {
 
 const initialProfile: UserProfile = {
   firstName: "",
+  birthDate: "",
+  sex: "préfère ne pas répondre",
+  cycleLastPeriodStart: "",
+  cycleAverageLength: "28",
+  cyclePeriodLength: "5",
   goal: "forme générale",
   customGoal: "",
   level: "intermédiaire",
