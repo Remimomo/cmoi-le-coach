@@ -15,6 +15,23 @@ type StravaActivitySummary = {
   startDate: string;
 };
 
+function sortStravaActivities(activities: StravaActivitySummary[]) {
+  return [...activities].sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
+}
+
+function formatStravaDate(startDate: string) {
+  const date = new Date(startDate);
+  if (Number.isNaN(date.getTime())) return "Date Strava indisponible";
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export default function GarminPage() {
   const [stravaStatus, setStravaStatus] = useState("Vérification Strava en cours...");
   const [stravaAuthorizeUrl, setStravaAuthorizeUrl] = useState<string | null>(null);
@@ -30,13 +47,14 @@ export default function GarminPage() {
       const activityData = await response.json();
 
       if (activityData.ok && Array.isArray(activityData.activities)) {
-        setStravaActivities(activityData.activities);
-        window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(activityData.activities));
+        const sortedActivities = sortStravaActivities(activityData.activities);
+        setStravaActivities(sortedActivities);
+        window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(sortedActivities));
         setStravaStatus(
-          activityData.activities.length > 0
+          sortedActivities.length > 0
             ? activityData.saveWarning
-              ? `${activityData.activities.length} activité(s) Strava récupérée(s). Sauvegarde Supabase à finaliser.`
-              : `${activityData.activities.length} activité(s) Strava synchronisée(s).`
+              ? `${sortedActivities.length} activité(s) Strava récupérée(s). Sauvegarde Supabase à finaliser.`
+              : `${sortedActivities.length} activité(s) Strava synchronisée(s).`
             : "Strava est connecté, mais aucune activité n'a été renvoyée par Strava."
         );
         return;
@@ -75,63 +93,67 @@ export default function GarminPage() {
 
   return (
     <AuthGate>
-    <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
-      <header className="mb-5 flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-mist/50">C&apos;moiLeCoach</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-night">STRAVA</h1>
-        </div>
-        <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full border border-night/10 bg-white/70">
-          <ArrowLeft className="h-5 w-5 text-moss" />
-        </Link>
-      </header>
-
-      <AccountStatus />
-
-      <section className="mb-4 rounded-[28px] border border-moss/25 bg-white/80 p-5 shadow-soft">
-        <p className="mb-1 text-sm font-medium text-moss">Connexion Strava</p>
-        <p className="text-sm leading-6 text-mist/80">{stravaStatus}</p>
-        {stravaAuthorizeUrl ? (
-          <a href="/api/strava/connect" className="mt-4 block rounded-2xl bg-ember px-4 py-3 text-center font-semibold text-white">
-            Connecter Strava
-          </a>
-        ) : !isStravaConnected ? (
-          <button disabled className="mt-4 w-full rounded-2xl bg-ember px-4 py-3 font-semibold text-white opacity-50">
-            Connecter Strava
-          </button>
-        ) : null}
-        {isStravaConnected ? (
-          <button onClick={syncStravaActivities} disabled={isSyncingStrava} className="mt-4 w-full rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
-            {isSyncingStrava ? "Synchronisation..." : "Synchroniser Strava"}
-          </button>
-        ) : null}
-        {stravaActivities.length > 0 ? (
-          <div className="mt-4 space-y-2">
-            {stravaActivities.map((activity) => (
-              <div key={activity.id} className="rounded-2xl bg-moss/10 px-4 py-3">
-                <p className="truncate text-sm font-medium text-night">{activity.name}</p>
-                <p className="mt-1 text-xs text-mist/70">
-                  {activity.type} · {activity.distanceKm} km · {activity.movingMinutes} min
-                </p>
-              </div>
-            ))}
+      <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-5">
+        <header className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-mist/50">C&apos;moiLeCoach</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-normal text-night">STRAVA</h1>
           </div>
-        ) : isStravaConnected && !isSyncingStrava ? (
-          <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm text-mist/70">
-            Aucune activité Strava reçue pour le moment. Lance une synchronisation, puis vérifie que tes activités existent bien sur Strava et que l&apos;autorisation donnée à C&apos;moiLeCoach permet de lire les activités.
-          </p>
-        ) : null}
-        {isStravaConnected ? (
-          <button onClick={disconnectStrava} className="mt-4 w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night">
-            Déconnecter Strava
-          </button>
-        ) : null}
-        <p className="mt-3 text-xs leading-5 text-mist/60">
-          Les activités Strava synchronisées sont sauvegardées sur ton compte et utilisées par le coach.
-        </p>
-      </section>
+          <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full border border-night/10 bg-white/70">
+            <ArrowLeft className="h-5 w-5 text-moss" />
+          </Link>
+        </header>
 
-    </main>
+        <AccountStatus />
+
+        <section className="mb-4 rounded-[28px] border border-moss/25 bg-white/80 p-5 shadow-soft">
+          <p className="mb-1 text-sm font-medium text-moss">Connexion Strava</p>
+          <p className="text-sm leading-6 text-mist/80">{stravaStatus}</p>
+          {stravaAuthorizeUrl ? (
+            <a href="/api/strava/connect" className="mt-4 block rounded-2xl bg-ember px-4 py-3 text-center font-semibold text-white">
+              Connecter Strava
+            </a>
+          ) : !isStravaConnected ? (
+            <button disabled className="mt-4 w-full rounded-2xl bg-ember px-4 py-3 font-semibold text-white opacity-50">
+              Connecter Strava
+            </button>
+          ) : null}
+          {isStravaConnected ? (
+            <button onClick={syncStravaActivities} disabled={isSyncingStrava} className="mt-4 w-full rounded-2xl bg-moss px-4 py-3 font-semibold text-night disabled:opacity-50">
+              {isSyncingStrava ? "Synchronisation..." : "Synchroniser Strava"}
+            </button>
+          ) : null}
+          {stravaActivities.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {stravaActivities.map((activity) => (
+                <div key={activity.id} className="rounded-2xl bg-moss/10 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 truncate text-sm font-medium text-night">{activity.name}</p>
+                    <p className="shrink-0 text-right text-[11px] font-medium uppercase tracking-[0.08em] text-moss">
+                      {formatStravaDate(activity.startDate)}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-mist/70">
+                    {activity.type} · {activity.distanceKm} km · {activity.movingMinutes} min
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : isStravaConnected && !isSyncingStrava ? (
+            <p className="mt-4 rounded-2xl bg-moss/10 px-4 py-3 text-sm text-mist/70">
+              Aucune activité Strava reçue pour le moment. Lance une synchronisation, puis vérifie que tes activités existent bien sur Strava et que l&apos;autorisation donnée à C&apos;moiLeCoach permet de lire les activités.
+            </p>
+          ) : null}
+          {isStravaConnected ? (
+            <button onClick={disconnectStrava} className="mt-4 w-full rounded-2xl border border-night/10 bg-white/70 px-4 py-3 font-semibold text-night">
+              Déconnecter Strava
+            </button>
+          ) : null}
+          <p className="mt-3 text-xs leading-5 text-mist/60">
+            Les activités Strava synchronisées sont sauvegardées sur ton compte et utilisées par le coach.
+          </p>
+        </section>
+      </main>
     </AuthGate>
   );
 }

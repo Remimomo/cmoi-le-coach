@@ -399,6 +399,8 @@ export function analyzeQvtContext(
   const daysSinceLastTraining = getDaysSinceLastTraining(history);
   const recentSessions = countRecentSessions(history, 14);
   const recentActivity = getRecentActivityContext(history);
+  const hasRecentTraining = daysSinceLastTraining !== null && daysSinceLastTraining <= 4;
+  const hasAnyRecentActivity = hasRecentTraining || recentActivity.hasRecentStrava;
   const constraintText = getConstraintText(profile, form);
   const mentalLoad = has(constraintText, [
     "semaine charg",
@@ -415,12 +417,11 @@ export function analyzeQvtContext(
     "reunion"
   ]);
   const sedentaryRisk =
-    garmin.lastActivity === "repos" ||
-    garmin.lastActivityDuration === "repos" ||
+    (!hasAnyRecentActivity && (garmin.lastActivity === "repos" || garmin.lastActivityDuration === "repos")) ||
     (daysSinceLastTraining === null && !recentActivity.hasRecentStrava) ||
     (daysSinceLastTraining !== null && daysSinceLastTraining >= 5) ||
-    recentSessions <= 1 ||
-    (garmin.trainingLoad === "faible" && recentSessions <= 2);
+    (!hasAnyRecentActivity && recentSessions <= 1) ||
+    (!hasAnyRecentActivity && garmin.trainingLoad === "faible" && recentSessions <= 2);
   const accessibleMode =
     sedentaryRisk ||
     mentalLoad ||
@@ -455,6 +456,36 @@ function durationFromNote(note: string, fallback: string, readiness: Readiness, 
   return fallback === "variable" ? "40 min" : fallback;
 }
 
+function durationMinutes(duration: string) {
+  const hourMatch = duration.match(/^1h(?:(\d{2}))?$/i);
+  if (hourMatch) return 60 + (hourMatch[1] ? Number(hourMatch[1]) : 0);
+
+  const minuteMatch = duration.match(/(\d{2,3})\s*min/i);
+  return minuteMatch ? Number(minuteMatch[1]) : null;
+}
+
+function formatDurationFromMinutes(minutes: number) {
+  if (minutes >= 90) return "1h30";
+  if (minutes >= 75) return "1h15";
+  if (minutes >= 60) return "1h";
+  return `${minutes} min`;
+}
+
+function adjustDurationForLevel(duration: string, profile: UserProfile, easy: boolean, painful: boolean) {
+  const minutes = durationMinutes(duration);
+  if (!minutes) return duration;
+
+  if (profile.level === "confirmé" && !easy && !painful) {
+    return formatDurationFromMinutes(Math.min(75, Math.max(minutes + 15, 50)));
+  }
+
+  if ((profile.level === "débutant" || profile.level === "reprise") && minutes > 40) {
+    return "40 min";
+  }
+
+  return duration;
+}
+
 function shouldBeEasy(readiness: Readiness, garmin: GarminMockData) {
   return (
     readiness.energy <= 4 ||
@@ -469,15 +500,15 @@ function isPerformanceGoal(goal: string) {
   return has(goal, ["gagner", "course", "swimrun", "swim run", "trail", "10 km", "semi", "marathon", "objectif"]);
 }
 
-function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness, garmin: GarminMockData, profile: UserProfile) {
+function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness, garmin: GarminMockData, profile: UserProfile, history: HistoryEntry[] = []) {
   const note = `${day.note} ${form.globalNotes}`.toLowerCase();
   const goalText = getGoal(profile).toLowerCase();
   const favoriteSports = getFavoriteSports(profile);
   const preferenceText = `${note} ${goalText} ${favoriteSports}`;
-  const qvt = analyzeQvtContext(readiness, garmin, profile, [], form);
+  const qvt = analyzeQvtContext(readiness, garmin, profile, history, form);
   const easy = shouldBeEasy(readiness, garmin);
   const painful = readiness.pain >= 6 || garmin.painNotes.toLowerCase().includes("genou");
-  const duration = durationFromNote(day.note || form.globalNotes, form.duration, readiness, garmin);
+  const duration = adjustDurationForLevel(durationFromNote(day.note || form.globalNotes, form.duration, readiness, garmin), profile, easy, painful);
   const confirmed = profile.level === "confirmé";
   const beginner = profile.level === "débutant" || profile.level === "reprise";
   const performanceGoal = isPerformanceGoal(goalText);
@@ -600,18 +631,28 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
   }
 
   if (has(note, ["plat", "courir", "footing"]) || has(preferenceText, ["10 km", "semi", "marathon", "trail", "swimrun", "courir", "course", "running", "footing"])) {
+    const confirmedHardRun = confirmed && !easy && !painful;
+
     return {
-      type: has(note, ["plat"]) ? "footing facile sur plat" : "footing facile",
+      type: confirmedHardRun ? "course intense structurée" : has(note, ["plat"]) ? "footing facile sur plat" : "footing facile",
       duration,
-      intensity: easy || beginner ? "facile" : confirmed ? "intense" : "modérée",
-      content: "8 min d'échauffement, course régulière en aisance, puis 5 min très faciles. Rester capable de parler tout du long.",
+      intensity: easy || beginner ? "facile" : confirmedHardRun ? "intense" : "modérée",
+      content: confirmedHardRun
+         ? "Séance course exigeante: échauffement long, blocs soutenus, récupérations courtes et retour au calme. L'objectif est de provoquer une vraie adaptation, sans négliger la récupération."
+        : "8 min d'échauffement, course régulière en aisance, puis 5 min très faciles. Rester capable de parler tout du long.",
       detailedContent: has(note, ["fractionné"])
          ? `Échauffement facile: ${confirmed ? "15" : "12"} min\nRépétitions rapides contrôlées: ${confirmed ? "10" : "8"} x 1 min\nRécupération: 1 min très facile entre répétitions\nRetour au calme: 8 min faciles`
-        : "Échauffement: 8 à 10 min\nCourse régulière en aisance: bloc principal\nRetour au calme: 5 min très faciles\nRécupération: étirements légers si besoin",
-      objective: "construire une base solide et répétable.",
+        : confirmedHardRun
+          ? "Échauffement progressif: 15 min\nBloc tempo soutenu: 3 x 8 min\nRécupération: 2 min très facile entre les blocs\nAccélérations relâchées: 4 x 20 sec\nRécupération: 1 min complète entre accélérations\nRetour au calme: 10 min faciles"
+          : "Échauffement: 8 à 10 min\nCourse régulière en aisance: bloc principal\nRetour au calme: 5 min très faciles\nRécupération: étirements légers si besoin",
+      objective: confirmedHardRun ? "développer une intensité utile à ton objectif sportif." : "construire une base solide et répétable.",
       reason: has(note, ["plat", "courir"])
-         ? "respecte ta demande utilisateur et évite une surcharge car les signaux de récupération sont pris en compte."
-        : "reste cohérent avec ton objectif tout en gardant une marge de récupération."
+         ? confirmedHardRun
+           ? "respecte ta demande de course et ton niveau confirmé: la charge est volontairement plus haute, avec des récupérations prévues."
+          : "respecte ta demande utilisateur et évite une surcharge car les signaux de récupération sont pris en compte."
+        : confirmedHardRun
+          ? "ton niveau confirmé et ton objectif permettent une séance vraiment structurée quand les signaux sont bons."
+          : "reste cohérent avec ton objectif tout en gardant une marge de récupération."
     };
   }
 
@@ -628,16 +669,20 @@ function chooseSession(day: PlannedDay, form: ProgramForm, readiness: Readiness,
   }
 
   return {
-    type: easy ? "séance douce mixte" : "course facile + éducatifs",
+    type: easy ? "séance douce mixte" : confirmed ? "course progressive intense" : "course facile + éducatifs",
     duration,
-    intensity: easy ? "facile" : "modérée",
+    intensity: easy ? "facile" : confirmed ? "intense" : "modérée",
     content: easy
        ? "Marche rapide ou course très douce, puis 8 min de gainage et mobilité."
-      : "Course facile, 4 lignes droites relâchées, puis mobilité courte.",
+      : confirmed
+        ? "Course progressive avec un bloc soutenu, éducatifs et récupération intégrée."
+        : "Course facile, 4 lignes droites relâchées, puis mobilité courte.",
     detailedContent: easy
        ? "Marche rapide ou course douce: 20 min\nGainage: 2 x 20 sec\nSquats lents: 2 x 8\nPonts fessiers: 2 x 8\nMobilité dos/hanches: 4 min\nRécupération: garder une marge nette"
-      : "Échauffement facile: 10 min\nCourse calme: 20 à 30 min\nLignes droites relâchées: 4 x 15 sec\nRécupération: complète entre chaque ligne droite",
-    objective: "installer la régularité sans pression.",
+      : confirmed
+        ? "Échauffement facile: 12 min\nCourse progressive: 20 min de modéré à soutenu\nBloc rapide contrôlé: 6 x 45 sec\nRécupération: 75 sec très facile entre les blocs\nRetour au calme: 8 min faciles"
+        : "Échauffement facile: 10 min\nCourse calme: 20 à 30 min\nLignes droites relâchées: 4 x 15 sec\nRécupération: complète entre chaque ligne droite",
+    objective: confirmed ? "créer une vraie stimulation adaptée à un niveau confirmé." : "installer la régularité sans pression.",
     reason: "choix équilibré entre objectif, forme du jour, charge récente et contraintes disponibles."
   };
 }
@@ -676,7 +721,7 @@ export function generateProgram(
           objective: "maintenir la régularité sans augmenter la charge mentale.",
           reason: "la période semble chargée ou peu active récemment; le programme réduit volontairement le nombre de vraies séances pour rester réaliste."
         }
-      : chooseSession(day, form, readiness, garmin, profile);
+      : chooseSession(day, form, readiness, garmin, profile, history);
     const isHard = session.intensity === "intense" || session.type.toLowerCase().includes("fractionné");
     const shouldSoften =
       previousWasHard ||
