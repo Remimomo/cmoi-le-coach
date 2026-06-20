@@ -115,6 +115,10 @@ function mergeWithoutEmpty<T extends Record<string, unknown>>(current: T, incomi
   return merged;
 }
 
+function sortStravaActivities(activities: StravaActivitySummary[]) {
+  return [...activities].sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
+}
+
 export default function ProgrammePage() {
   const [readiness, setReadiness] = useState<Readiness>(initialReadiness);
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
@@ -150,7 +154,7 @@ export default function ProgrammePage() {
     });
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     if (savedProgram) setProgram(JSON.parse(savedProgram));
-    if (savedStravaActivities) setStravaActivities(JSON.parse(savedStravaActivities));
+    if (savedStravaActivities) setStravaActivities(sortStravaActivities(JSON.parse(savedStravaActivities)));
     setHasLoadedLocalData(true);
   }, []);
 
@@ -182,8 +186,9 @@ export default function ProgrammePage() {
         if (Array.isArray(result.data.currentProgram) && result.data.currentProgram.length > 0) setProgram(result.data.currentProgram);
         if (Array.isArray(result.data.history) && result.data.history.length > 0) setHistory(result.data.history);
         if (Array.isArray(result.data.stravaData?.activities)) {
-          setStravaActivities(result.data.stravaData.activities);
-          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.data.stravaData.activities));
+          const sortedActivities = sortStravaActivities(result.data.stravaData.activities);
+          setStravaActivities(sortedActivities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(sortedActivities));
         }
         setCloudStatus("Données synchronisées avec ton compte.");
       })
@@ -208,8 +213,9 @@ export default function ProgrammePage() {
       .then((response) => response.json())
       .then((result) => {
         if (result.ok && Array.isArray(result.activities)) {
-          setStravaActivities(result.activities);
-          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.activities));
+          const sortedActivities = sortStravaActivities(result.activities);
+          setStravaActivities(sortedActivities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(sortedActivities));
         }
       })
       .catch(() => undefined);
@@ -220,7 +226,7 @@ export default function ProgrammePage() {
       id: `strava-${activity.id}`,
       title: `Strava · ${activity.name}`,
       detail: `${activity.type}, ${activity.distanceKm} km, ${activity.movingMinutes} min`,
-      date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(new Date(activity.startDate)),
+      date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }).format(new Date(activity.startDate)),
       timestamp: new Date(activity.startDate).getTime()
     }));
   }, [stravaActivities]);

@@ -49,7 +49,7 @@ export async function refreshStravaToken(refreshToken: string): Promise<StravaTo
   return response.json();
 }
 
-export async function getStravaActivities(accessToken: string, limit = 30): Promise<StravaActivity[]> {
+export async function getStravaActivities(accessToken: string, limit = 100): Promise<StravaActivity[]> {
   const after = Math.floor((Date.now() - 1000 * 60 * 60 * 24 * 365) / 1000);
   const params = new URLSearchParams({
     per_page: String(limit),

@@ -61,6 +61,12 @@ export async function authenticateWithEmail(mode: AuthMode, email: string, passw
   return callSupabaseAuth("token?grant_type=password", { email, password });
 }
 
+export async function refreshSupabaseSession(refreshToken: string) {
+  return callSupabaseAuth("token?grant_type=refresh_token", {
+    refresh_token: refreshToken
+  });
+}
+
 export async function sendPasswordResetEmail(email: string, redirectTo: string) {
   return callSupabaseAuth("recover", {
     email,

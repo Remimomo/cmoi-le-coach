@@ -27,6 +27,7 @@ function formatStravaDate(startDate: string) {
     weekday: "short",
     day: "2-digit",
     month: "short",
+    year: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);

@@ -179,6 +179,10 @@ function relevanceLabel(value: number) {
   return "beaucoup trop difficile";
 }
 
+function sortStravaActivities(activities: StravaActivitySummary[]) {
+  return [...activities].sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
+}
+
 export default function Home() {
   const [readiness, setReadiness] = useState<Readiness>(initialReadiness);
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
@@ -215,7 +219,7 @@ export default function Home() {
       plannedDays: mergePlannedDays(savedForm.plannedDays)
     });
     if (savedHistory) setHistory(JSON.parse(savedHistory));
-    if (savedStravaActivities) setStravaActivities(JSON.parse(savedStravaActivities));
+    if (savedStravaActivities) setStravaActivities(sortStravaActivities(JSON.parse(savedStravaActivities)));
     setHasLoadedLocalData(true);
   }, []);
 
@@ -246,8 +250,9 @@ export default function Home() {
         }
         if (Array.isArray(result.data.history) && result.data.history.length > 0) setHistory(result.data.history);
         if (Array.isArray(result.data.stravaData?.activities)) {
-          setStravaActivities(result.data.stravaData.activities);
-          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.data.stravaData.activities));
+          const sortedActivities = sortStravaActivities(result.data.stravaData.activities);
+          setStravaActivities(sortedActivities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(sortedActivities));
         }
         setCloudStatus("Données synchronisées avec ton compte.");
       })
@@ -291,8 +296,9 @@ export default function Home() {
       .then((response) => response.json())
       .then((result) => {
         if (result.ok && Array.isArray(result.activities)) {
-          setStravaActivities(result.activities);
-          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(result.activities));
+          const sortedActivities = sortStravaActivities(result.activities);
+          setStravaActivities(sortedActivities);
+          window.localStorage.setItem("auto-coach-strava-activities", JSON.stringify(sortedActivities));
         }
       })
       .catch(() => undefined);
@@ -303,7 +309,7 @@ export default function Home() {
       id: `strava-${activity.id}`,
       title: `Strava · ${activity.name}`,
       detail: `${activity.type}, ${activity.distanceKm} km, ${activity.movingMinutes} min`,
-      date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(new Date(activity.startDate)),
+      date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "2-digit" }).format(new Date(activity.startDate)),
       timestamp: new Date(activity.startDate).getTime()
     }));
   }, [stravaActivities]);
@@ -314,11 +320,15 @@ export default function Home() {
     () => [...coachHistory].sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0)),
     [coachHistory]
   );
-  const visibleHistoryEntries = showFullHistory ? displayedHistory : displayedHistory.slice(0, 3);
+  const historyPreviewEntries = showFullHistory ? displayedHistory.slice(0, 5) : displayedHistory.slice(0, 3);
   const activeSummary = summary ?? localSummary;
   const tenDayBalance = useMemo(() => {
     const since = Date.now() - 10 * 24 * 60 * 60 * 1000;
-    const recentEntries = coachHistory.filter((entry) => (entry.timestamp ?? 0) >= since);
+    const now = Date.now();
+    const recentEntries = coachHistory.filter((entry) => {
+      const timestamp = entry.timestamp ?? 0;
+      return timestamp >= since && timestamp <= now;
+    });
     const minutes = recentEntries.reduce((total, entry) => {
       const match = entry.detail.match(/(\d+)\s*min/i);
       return total + (match ? Number(match[1]) : 0);
@@ -616,30 +626,13 @@ export default function Home() {
           </section>
         )}
 
-        <section className="mb-4 rounded-[28px] border border-moss/25 bg-moss/10 p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-moss">Programme IA</p>
-              <h2 className="mt-1 text-lg font-medium text-night">Tes séances sont sur une page dédiée</h2>
-              <p className="mt-2 text-sm leading-6 text-mist/70">
-                Choisis tes jours et consulte le programme détaillé directement, sans ouvrir chaque séance.
-              </p>
-            </div>
-            <Sparkles className="h-6 w-6 shrink-0 text-ember" />
-          </div>
-          <Link href="/programme" className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-moss px-4 py-3 font-semibold text-night">
-            Ouvrir le programme
-            <ChevronRight className="h-5 w-5" />
-          </Link>
-        </section>
-
         <section className="mb-5 rounded-[28px] border border-night/10 bg-white/80 p-5">
           <h2 className="mb-3 text-lg font-medium text-night">Historique local</h2>
           {displayedHistory.length === 0 ? (
             <p className="text-sm leading-6 text-mist/60">Les séances mémorisées et Strava apparaîtront ici.</p>
           ) : (
             <div className="space-y-3">
-              {visibleHistoryEntries.map((entry) => (
+              {historyPreviewEntries.map((entry) => (
                 <article key={entry.id} className="rounded-2xl bg-white/65 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -694,7 +687,7 @@ export default function Home() {
                   onClick={() => setShowFullHistory((value) => !value)}
                   className="w-full rounded-2xl border border-night/10 bg-white/65 px-4 py-3 text-sm font-medium text-night"
                 >
-                  {showFullHistory ? "Réduire l'historique" : `Voir les ${displayedHistory.length - 3} autres entrées`}
+                  {showFullHistory ? "Réduire l'historique" : `Voir ${Math.min(2, displayedHistory.length - 3)} autre(s) entrée(s)`}
                 </button>
               )}
             </div>

@@ -29,6 +29,10 @@ function summarizeActivity(activity: Awaited<ReturnType<typeof getStravaActiviti
   };
 }
 
+function sortSummarizedActivities(activities: ReturnType<typeof summarizeActivity>[]) {
+  return [...activities].sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
+}
+
 async function saveStravaSync(activities: ReturnType<typeof summarizeActivity>[]) {
   try {
     await saveUserAppData({
@@ -56,14 +60,14 @@ export async function GET() {
 
     if (accessToken) {
       const activities = await getStravaActivities(accessToken);
-      const summarized = activities.map(summarizeActivity);
+      const summarized = sortSummarizedActivities(activities.map(summarizeActivity));
       const saveWarning = await saveStravaSync(summarized);
       return NextResponse.json({ ok: true, activities: summarized, saveWarning });
     }
 
     const refreshed = await refreshStravaToken(refreshToken as string);
     const activities = await getStravaActivities(refreshed.access_token);
-    const summarized = activities.map(summarizeActivity);
+    const summarized = sortSummarizedActivities(activities.map(summarizeActivity));
     const saveWarning = await saveStravaSync(summarized);
     const response = NextResponse.json({ ok: true, activities: summarized, saveWarning });
 
