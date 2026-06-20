@@ -511,11 +511,11 @@ export default function Home() {
           <Link href="/profil" className="rounded-2xl border border-night/10 bg-white/65 px-3 py-3 text-center text-sm text-mist">
             Profil
           </Link>
-          <Link href="/programme" className="rounded-2xl border border-night/10 bg-white/65 px-2 py-3 text-center text-sm text-mist">
-            Programme
-          </Link>
           <Link href="/garmin" className="rounded-2xl border border-night/10 bg-white/65 px-2 py-3 text-center text-sm text-mist">
             STRAVA
+          </Link>
+          <Link href="/programme" className="rounded-2xl border border-night/10 bg-white/65 px-2 py-3 text-center text-sm text-mist">
+            Programme
           </Link>
           <Link href="/entreprise" className="rounded-2xl border border-night/10 bg-white/65 px-2 py-3 text-center text-sm text-mist">
             Entreprise

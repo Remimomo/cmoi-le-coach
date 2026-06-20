@@ -49,22 +49,36 @@ export async function refreshStravaToken(refreshToken: string): Promise<StravaTo
   return response.json();
 }
 
-export async function getStravaActivities(accessToken: string, limit = 100): Promise<StravaActivity[]> {
+export async function getStravaActivities(accessToken: string, limit = 500): Promise<StravaActivity[]> {
   const after = Math.floor((Date.now() - 1000 * 60 * 60 * 24 * 365) / 1000);
-  const params = new URLSearchParams({
-    per_page: String(limit),
-    after: String(after)
-  });
-  const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
-    },
-    cache: "no-store"
-  });
+  const perPage = 100;
+  const maxPages = Math.ceil(limit / perPage);
+  const activities: StravaActivity[] = [];
 
-  if (!response.ok) {
-    throw new Error("Lecture des activités Strava impossible pour le moment.");
+  for (let page = 1; page <= maxPages; page += 1) {
+    const params = new URLSearchParams({
+      per_page: String(perPage),
+      page: String(page),
+      after: String(after)
+    });
+    const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error("Lecture des activités Strava impossible pour le moment.");
+    }
+
+    const pageActivities = (await response.json()) as StravaActivity[];
+    activities.push(...pageActivities);
+
+    if (pageActivities.length < perPage) break;
   }
 
-  return response.json();
+  return activities
+    .sort((left, right) => new Date(right.start_date).getTime() - new Date(left.start_date).getTime())
+    .slice(0, limit);
 }

@@ -21,7 +21,7 @@ export function buildStravaAuthorizeUrl() {
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: "code",
-    approval_prompt: "auto",
+    approval_prompt: "force",
     scope: "read,activity:read_all"
   });
 
