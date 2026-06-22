@@ -70,6 +70,17 @@ function readStorage<T>(key: string, fallback: T) {
   }
 }
 
+function readStorageArray<T>(key: string): T[] {
+  try {
+    const value = window.localStorage.getItem(key);
+    if (!value) return [];
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeProfile(profile: UserProfile): UserProfile {
   return {
     ...profile,
@@ -139,9 +150,9 @@ export default function ProgrammePage() {
     const savedReadiness = readStorage("auto-coach-readiness", initialReadiness);
     const savedGarmin = readStorage("auto-coach-garmin-test", initialGarminMock);
     const savedForm = readStorage("auto-coach-planner", initialForm);
-    const savedHistory = window.localStorage.getItem("auto-coach-history");
-    const savedProgram = window.localStorage.getItem("auto-coach-current-program");
-    const savedStravaActivities = window.localStorage.getItem("auto-coach-strava-activities");
+    const savedHistory = readStorageArray<HistoryEntry>("auto-coach-history");
+    const savedProgram = readStorageArray<ProgramSession>("auto-coach-current-program");
+    const savedStravaActivities = readStorageArray<StravaActivitySummary>("auto-coach-strava-activities");
 
     setProfile(normalizeProfile(savedProfile));
     setReadiness(savedReadiness);
@@ -152,9 +163,9 @@ export default function ProgrammePage() {
       priority: savedForm.priority?.toLowerCase?.() ?? initialForm.priority,
       plannedDays: mergePlannedDays(savedForm.plannedDays)
     });
-    if (savedHistory) setHistory(JSON.parse(savedHistory));
-    if (savedProgram) setProgram(JSON.parse(savedProgram));
-    if (savedStravaActivities) setStravaActivities(sortStravaActivities(JSON.parse(savedStravaActivities)));
+    setHistory(savedHistory);
+    setProgram(savedProgram);
+    setStravaActivities(sortStravaActivities(savedStravaActivities));
     setHasLoadedLocalData(true);
   }, []);
 
