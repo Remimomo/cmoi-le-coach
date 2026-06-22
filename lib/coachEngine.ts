@@ -433,14 +433,29 @@ export function buildShapeSummary(
     ? feedback.durationHint || `Pertinence moyenne récente: ${feedback.average}/100`
     : "";
   const markedSignals = [...signals, historyMessage, stravaSignal, feedbackSignal, qvtSignal].filter(Boolean).slice(0, 5);
-  const signalText = markedSignals.length ? markedSignals.join(", ") : "les voyants principaux sont corrects";
-  const direction = sleepConcern || stressConcern || loadConcern || painConcern
-    ? "On garde une marge, mais le contenu reste relié à ton objectif."
-    : "On peut viser une séance utile, sans surcharger.";
+  const signalText = markedSignals.length ? markedSignals.join(", ") : "tes voyants principaux sont cohérents";
+  const qvtAdvice = qvt.mentalLoad
+    ? "Côté QVT, le plus utile est de garder une organisation simple: peu de décisions à prendre, une séance claire, et des moments courts de mouvement si la journée déborde."
+    : qvt.sedentaryRisk
+      ? "Côté QVT, je garde en tête l'enjeu anti-sédentarité: même une action courte dans la journée compte, surtout si elle évite de rester longtemps immobile."
+      : "Côté QVT, on garde l'idée simple: progresser sans transformer la semaine en contrainte supplémentaire.";
+  const recentInterpretation = recentActivity.hasRecentStrava
+    ? recentActivity.heavyRecentActivity
+      ? "Tes dernières données Strava montrent déjà une charge récente, donc je ne chercherais pas à empiler de l'intensité aujourd'hui."
+      : "Tes dernières activités Strava donnent un point d'appui concret: on peut construire la suite sur du réel, pas seulement sur une intention."
+    : daysSinceLastTraining !== null && daysSinceLastTraining <= 2
+      ? "Ton historique montre une séance récente, donc la priorité est de placer la prochaine charge au bon moment."
+      : "Comme l'historique récent reste limité, je privilégie une reprise lisible et facile à ajuster.";
+  const bodySignal = sleepConcern || stressConcern || loadConcern || painConcern
+    ? "Tes sensations demandent de garder une marge."
+    : "Tes sensations permettent d'avancer, à condition de rester propre dans l'exécution.";
+  const goalInterpretation = isPerformanceGoal(goal)
+    ? `Pour ton objectif ${goal.toLowerCase()}, je garde une logique spécifique: régularité, récupération et séances utiles plutôt que volume ajouté au hasard.`
+    : `Pour ton objectif ${goal.toLowerCase()}, le plus rentable est de construire une régularité que tu peux tenir.`;
 
   return {
     status,
-    explanation: `Points marquants: ${signalText}. Objectif: ${goal.toLowerCase()}. Priorité: ${priority.toLowerCase()}. ${direction}`
+    explanation: `${bodySignal} ${recentInterpretation} ${goalInterpretation} ${qvtAdvice} Repères pris en compte: ${signalText}.`
   };
 }
 

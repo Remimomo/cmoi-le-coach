@@ -1,13 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Check, Dumbbell, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays, Check, Dumbbell, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  buildGlobalAdvice,
   generateProgram,
   mergePlannedDays,
-  type CoachAdvice,
   type HistoryEntry,
   type ProgramForm,
   type ProgramSession,
@@ -59,6 +57,21 @@ const initialForm: ProgramForm = {
   priority: "régularité",
   globalNotes: "",
   plannedDays: []
+};
+
+const movementExplanations: Record<string, string> = {
+  "squats lents": "Pieds largeur bassin, descends comme pour t'asseoir, dos grand, genoux dans l'axe des pieds.",
+  "fentes arrière": "Recule une jambe, plie les deux genoux doucement, puis pousse dans le pied avant pour revenir.",
+  "gainage": "Corps aligné, ventre serré, épaules stables. Respire sans creuser le dos.",
+  "ponts fessiers": "Allongé sur le dos, pieds au sol, monte le bassin en serrant les fessiers puis redescends contrôlé.",
+  "pompes inclinées": "Mains sur un support stable, corps aligné, descends la poitrine puis repousse sans casser les hanches.",
+  "tirages": "Tire les coudes vers l'arrière, épaules basses, puis contrôle le retour.",
+  "tirage élastique": "Élastique tendu devant toi, tire vers les côtes, épaules basses, retour lent.",
+  "mobilité": "Bouge lentement dans une amplitude confortable, sans forcer ni chercher la douleur.",
+  "lignes droites": "Accélération courte et relâchée, posture haute, récupération complète entre deux répétitions.",
+  "accélérations": "Monte progressivement la vitesse sans sprinter, reste propre techniquement.",
+  "bloc tempo": "Allure soutenue mais contrôlée: tu travailles, sans finir à bout de souffle.",
+  "montée soutenue": "Effort en côte régulier, petites foulées, buste légèrement penché."
 };
 
 function readStorage<T>(key: string, fallback: T) {
@@ -130,13 +143,29 @@ function sortStravaActivities(activities: StravaActivitySummary[]) {
   return [...activities].sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
 }
 
+function getLineLabel(line: string) {
+  return line.split(":")[0].trim().toLowerCase();
+}
+
+function isRestLine(line: string) {
+  const label = getLineLabel(line);
+  return label.includes("récup") || label.includes("retour au calme") || label.includes("respiration");
+}
+
+function getMovementExplanations(detailedContent: string) {
+  const labels = detailedContent.split("\n").map(getLineLabel).filter(Boolean);
+
+  return Object.entries(movementExplanations)
+    .filter(([movement]) => labels.some((label) => label.includes(movement) || movement.includes(label)))
+    .slice(0, 5);
+}
+
 export default function ProgrammePage() {
   const [readiness, setReadiness] = useState<Readiness>(initialReadiness);
   const [profile, setProfile] = useState<UserProfile>(initialProfile);
   const [garminData, setGarminData] = useState<GarminMockData>(initialGarminMock);
   const [form, setForm] = useState<ProgramForm>({ ...initialForm, plannedDays: mergePlannedDays() });
   const [program, setProgram] = useState<ProgramSession[]>([]);
-  const [globalAdvice, setGlobalAdvice] = useState<CoachAdvice | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [stravaActivities, setStravaActivities] = useState<StravaActivitySummary[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -144,6 +173,8 @@ export default function ProgrammePage() {
   const [hasCheckedCloudData, setHasCheckedCloudData] = useState(false);
   const [hasEditedPlanner, setHasEditedPlanner] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("Synchronisation locale active.");
+  const [expandedMovementSessionId, setExpandedMovementSessionId] = useState<string | null>(null);
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     const savedProfile = readStorage("auto-coach-profile", initialProfile);
@@ -306,6 +337,7 @@ export default function ProgrammePage() {
 
   async function buildProgram() {
     setIsGenerating(true);
+    setSavedSessionId(null);
     const coachForm = { ...form, duration: readiness.time };
     const fallbackProgram = generateProgram(readiness, coachForm, profile, garminData, coachHistory);
 
@@ -318,7 +350,6 @@ export default function ProgrammePage() {
       const result = await response.json();
       const nextProgram = result.program?.length ? result.program : fallbackProgram;
       setProgram(nextProgram);
-      setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, nextProgram));
       await saveCloudPatch({
         readiness,
         garminData,
@@ -328,7 +359,6 @@ export default function ProgrammePage() {
       }, "Programme sauvegardé sur ton compte.");
     } catch {
       setProgram(fallbackProgram);
-      setGlobalAdvice(buildGlobalAdvice(readiness, garminData, profile, coachForm, fallbackProgram));
       await saveCloudPatch({
         readiness,
         garminData,
@@ -342,7 +372,7 @@ export default function ProgrammePage() {
   }
 
   function saveSession(session: ProgramSession) {
-    const entry = {
+    const entry: HistoryEntry = {
       id: crypto.randomUUID(),
       title: `${session.dateLabel} · ${session.type}`,
       detail: `${session.duration}, intensité ${session.intensity}`,
@@ -359,14 +389,17 @@ export default function ProgrammePage() {
     };
 
     setHistory((current) => {
-      const nextHistory = [entry, ...current].slice(0, 10);
+      const nextHistory = [entry, ...current.filter((item) => item.session?.id !== session.id)].slice(0, 10);
       window.localStorage.setItem("auto-coach-history", JSON.stringify(nextHistory));
       void saveCloudPatch({ history: nextHistory, memory: buildUserMemory(nextHistory, profile) }, "Séance sauvegardée sur ton compte.");
       return nextHistory;
     });
+    setSavedSessionId(session.id);
+    setCloudStatus("Séance mémorisée. Elle servira à personnaliser les prochaines propositions.");
   }
 
   function generateAlternativeSession(sessionId: string) {
+    setSavedSessionId(null);
     setProgram((current) => {
       const nextProgram = current.map((session) => {
         if (session.id !== sessionId) return session;
@@ -492,13 +525,6 @@ export default function ProgrammePage() {
           <p className="mt-3 text-xs text-mist/55">{cloudStatus}</p>
         </section>
 
-        {globalAdvice && (
-          <section className="mb-4 rounded-[24px] border border-ember/20 bg-ember/10 p-4">
-            <p className="text-sm font-medium text-ember">{globalAdvice.title}</p>
-            <p className="mt-2 text-sm leading-6 text-mist/75">{globalAdvice.body}</p>
-          </section>
-        )}
-
         {visibleProgram.length > 0 ? (
           <section className="mb-4 rounded-[28px] border border-night/10 bg-white/70 p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -506,35 +532,84 @@ export default function ProgrammePage() {
               <Dumbbell className="h-5 w-5 text-moss" />
             </div>
             <div className="space-y-4">
-              {visibleProgram.map((session) => (
-                <article key={session.id} className="rounded-3xl bg-white/85 p-4">
-                  <p className="mb-1 text-sm font-semibold text-ember">{session.dateLabel}</p>
-                  <h3 className="text-lg font-medium text-night">{session.type}</h3>
-                  <p className="mt-1 text-sm text-mist/70">{session.duration} · intensité {session.intensity}</p>
-                  <div className="mt-4 space-y-3 text-sm leading-6 text-mist/75">
-                    <p><span className="font-medium text-night">Contenu : </span>{session.content}</p>
-                    <p><span className="font-medium text-night">Objectif : </span>{session.objective}</p>
-                    <div className="space-y-2 rounded-2xl bg-white/75 p-4">
-                      {session.detailedContent.split("\n").filter(Boolean).map((line) => (
-                        <p key={line} className="border-b border-night/5 pb-2 last:border-b-0 last:pb-0">{line}</p>
-                      ))}
-                    </div>
-                    <p className="rounded-2xl bg-moss/10 px-3 py-2"><span className="font-medium text-moss">Pourquoi ce choix : </span>{session.reason}</p>
-                  </div>
+              {visibleProgram.map((session) => {
+                const movementHelp = getMovementExplanations(session.detailedContent);
+                const movementsOpen = expandedMovementSessionId === session.id;
+                const isSaved = savedSessionId === session.id;
 
-                  <button
-                    onClick={() => generateAlternativeSession(session.id)}
-                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-ember/25 bg-ember/10 px-4 py-3 text-sm font-medium text-ember"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Générer une autre séance du jour
-                  </button>
-                  <button onClick={() => saveSession(session)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-moss/30 bg-moss/15 px-4 py-3 font-medium text-moss">
-                    <Check className="h-5 w-5" />
-                    Mémoriser cette séance
-                  </button>
-                </article>
-              ))}
+                return (
+                  <article key={session.id} className="rounded-3xl bg-white/85 p-4">
+                    <p className="mb-1 text-sm font-semibold text-ember">{session.dateLabel}</p>
+                    <h3 className="text-lg font-medium text-night">{session.type}</h3>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full bg-moss/15 px-3 py-1 font-medium text-moss">{session.duration}</span>
+                      <span className="rounded-full bg-ember/10 px-3 py-1 font-medium text-ember">intensité {session.intensity}</span>
+                    </div>
+
+                    <div className="mt-4 space-y-3 text-sm leading-6 text-mist/75">
+                      <p><span className="font-medium text-night">Objectif : </span>{session.objective}</p>
+                      <p className="rounded-2xl bg-moss/10 px-3 py-2">
+                        <span className="font-medium text-moss">Pourquoi ce choix : </span>{session.reason}
+                      </p>
+
+                      <div className="rounded-2xl bg-white/75 p-4">
+                        <p className="mb-3 text-sm font-semibold text-night">Déroulé de la séance</p>
+                        <div className="space-y-2">
+                          {session.detailedContent.split("\n").filter(Boolean).map((line) => (
+                            <div
+                              key={line}
+                              className={`rounded-2xl px-3 py-2 text-sm leading-5 ${
+                                isRestLine(line)
+                                  ? "bg-ember/10 text-ember"
+                                  : "bg-ink-850 text-mist/80"
+                              }`}
+                            >
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {movementHelp.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-night/10 bg-white/70 p-3">
+                        <button
+                          onClick={() => setExpandedMovementSessionId((current) => current === session.id ? null : session.id)}
+                          className="flex w-full items-center justify-between text-left text-sm font-medium text-night"
+                        >
+                          <span className="flex items-center gap-2">
+                            <BookOpen className="h-4 w-4 text-moss" />
+                            Explication des mouvements
+                          </span>
+                          <span className="text-xs text-mist/50">{movementsOpen ? "Masquer" : "Voir"}</span>
+                        </button>
+                        {movementsOpen && (
+                          <div className="mt-3 space-y-2">
+                            {movementHelp.map(([movement, explanation]) => (
+                              <div key={movement} className="rounded-2xl bg-moss/10 px-3 py-2">
+                                <p className="text-sm font-medium capitalize text-night">{movement}</p>
+                                <p className="mt-1 text-xs leading-5 text-mist/70">{explanation}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => generateAlternativeSession(session.id)}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-ember/25 bg-ember/10 px-4 py-3 text-sm font-medium text-ember"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Générer une autre séance du jour
+                    </button>
+                    <button onClick={() => saveSession(session)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-moss/30 bg-moss/15 px-4 py-3 font-medium text-moss">
+                      <Check className="h-5 w-5" />
+                      {isSaved ? "Séance mémorisée" : "Mémoriser cette séance"}
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           </section>
         ) : (
